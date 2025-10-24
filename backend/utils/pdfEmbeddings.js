@@ -1,4 +1,4 @@
-import pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse-fork';
 
 /**
  * Extract and chunk text from PDF buffer
