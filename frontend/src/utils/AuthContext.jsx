@@ -20,16 +20,22 @@ export const AuthProvider = ({ children }) => {
     // Check active session
     const initAuth = async () => {
       try {
+        console.log('🔄 Initializing auth...');
         const currentUser = await getCurrentUser();
+        console.log('👤 Current user:', currentUser ? currentUser.email : 'None');
         setUser(currentUser);
 
         if (currentUser) {
           const userProfile = await getProfile(currentUser.id);
+          console.log('📋 User profile:', userProfile);
           setProfile(userProfile);
         }
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        console.error('❌ Auth initialization error:', error);
+        setUser(null);
+        setProfile(null);
       } finally {
+        console.log('✅ Auth initialization complete');
         setLoading(false);
       }
     };

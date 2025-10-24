@@ -65,6 +65,12 @@ export const getProfile = async (userId) => {
     .eq('id', userId)
     .single();
 
+  // If no profile found, return null instead of throwing
+  if (error && error.code === 'PGRST116') {
+    console.warn('No profile found for user:', userId);
+    return null;
+  }
+
   if (error) throw error;
   return data;
 };
