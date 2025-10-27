@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { courseAPI, pdfAPI } from '../services/api';
+import { courseAPI, pdfAPI, linkAPI } from '../services/api';
 
 export default function CourseCreation() {
   const navigate = useNavigate();
@@ -10,13 +10,14 @@ export default function CourseCreation() {
   const [formData, setFormData] = useState({
     course_name: '',
     description: '',
-    teaching_style: '',
-    teaching_pace: '',
     learning_goals: '',
   });
 
   const [pdfs, setPdfs] = useState([]);
+  const [links, setLinks] = useState([]);
+  const [newLink, setNewLink] = useState({ title: '', url: '', description: '' });
   const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [addingLink, setAddingLink] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -25,6 +26,7 @@ export default function CourseCreation() {
     if (isEditMode) {
       loadCourse();
       loadPdfs();
+      loadLinks();
     }
   }, [courseId]);
 
@@ -34,8 +36,6 @@ export default function CourseCreation() {
       setFormData({
         course_name: data.course_name,
         description: data.description || '',
-        teaching_style: data.teaching_style || '',
-        teaching_pace: data.teaching_pace || '',
         learning_goals: data.learning_goals || '',
       });
     } catch (err) {
@@ -50,6 +50,15 @@ export default function CourseCreation() {
       setPdfs(data);
     } catch (err) {
       console.error('Failed to load PDFs:', err);
+    }
+  };
+
+  const loadLinks = async () => {
+    try {
+      const data = await linkAPI.getAll(courseId);
+      setLinks(data);
+    } catch (err) {
+      console.error('Failed to load links:', err);
     }
   };
 
@@ -115,6 +124,46 @@ export default function CourseCreation() {
       setPdfs(pdfs.filter(p => p.id !== pdfId));
     } catch (err) {
       setError(err.message || 'Failed to delete PDF');
+    }
+  };
+
+  const handleAddLink = async (e) => {
+    e.preventDefault();
+
+    if (!isEditMode) {
+      alert('Please save the course first before adding links');
+      return;
+    }
+
+    if (!newLink.title || !newLink.url) {
+      setError('Link title and URL are required');
+      return;
+    }
+
+    setAddingLink(true);
+    setError('');
+
+    try {
+      const addedLink = await linkAPI.add(courseId, newLink);
+      setLinks([...links, addedLink]);
+      setNewLink({ title: '', url: '', description: '' });
+    } catch (err) {
+      setError(err.message || 'Failed to add link');
+    } finally {
+      setAddingLink(false);
+    }
+  };
+
+  const handleDeleteLink = async (linkId) => {
+    if (!confirm('Are you sure you want to delete this link?')) {
+      return;
+    }
+
+    try {
+      await linkAPI.delete(linkId);
+      setLinks(links.filter(l => l.id !== linkId));
+    } catch (err) {
+      setError(err.message || 'Failed to delete link');
     }
   };
 
@@ -185,45 +234,6 @@ export default function CourseCreation() {
               />
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="teaching_style" className="block text-sm font-medium text-gray-700 mb-1">
-                  Teaching Style
-                </label>
-                <select
-                  id="teaching_style"
-                  name="teaching_style"
-                  value={formData.teaching_style}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                >
-                  <option value="">Select style...</option>
-                  <option value="socratic">Socratic (Question-based)</option>
-                  <option value="direct">Direct (Clear explanations)</option>
-                  <option value="exploratory">Exploratory (Discovery-based)</option>
-                  <option value="practical">Practical (Hands-on)</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="teaching_pace" className="block text-sm font-medium text-gray-700 mb-1">
-                  Teaching Pace
-                </label>
-                <select
-                  id="teaching_pace"
-                  name="teaching_pace"
-                  value={formData.teaching_pace}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                >
-                  <option value="">Select pace...</option>
-                  <option value="slow">Slow (Step-by-step)</option>
-                  <option value="moderate">Moderate (Balanced)</option>
-                  <option value="fast">Fast (Quick explanations)</option>
-                </select>
-              </div>
-            </div>
-
             <div>
               <label htmlFor="learning_goals" className="block text-sm font-medium text-gray-700 mb-1">
                 Learning Goals
@@ -237,6 +247,9 @@ export default function CourseCreation() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 placeholder="What should students learn from this course?"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Note: The AI tutor uses a Socratic teaching method to guide students through discovery
+              </p>
             </div>
 
             <button
@@ -284,6 +297,108 @@ export default function CourseCreation() {
                       <button
                         onClick={() => handleDeletePdf(pdf.id)}
                         className="text-red-600 hover:text-red-800 text-sm font-medium"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Course Links Section (only in edit mode) */}
+          {isEditMode && (
+            <div className="mt-8 pt-8 border-t border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Course Links & Resources</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Add external links to MATLAB documentation, tutorials, or other learning resources. The AI tutor will reference these when helping students.
+              </p>
+
+              {/* Add Link Form */}
+              <form onSubmit={handleAddLink} className="bg-gray-50 p-4 rounded-lg mb-4">
+                <div className="grid gap-3">
+                  <div>
+                    <label htmlFor="link_title" className="block text-sm font-medium text-gray-700 mb-1">
+                      Link Title *
+                    </label>
+                    <input
+                      type="text"
+                      id="link_title"
+                      value={newLink.title}
+                      onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                      placeholder="e.g., MATLAB Arrays Documentation"
+                      disabled={addingLink}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="link_url" className="block text-sm font-medium text-gray-700 mb-1">
+                      URL *
+                    </label>
+                    <input
+                      type="url"
+                      id="link_url"
+                      value={newLink.url}
+                      onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                      placeholder="https://..."
+                      disabled={addingLink}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="link_description" className="block text-sm font-medium text-gray-700 mb-1">
+                      Description (Optional)
+                    </label>
+                    <textarea
+                      id="link_description"
+                      value={newLink.description}
+                      onChange={(e) => setNewLink({ ...newLink, description: e.target.value })}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                      placeholder="Brief description of this resource..."
+                      disabled={addingLink}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={addingLink || !newLink.title || !newLink.url}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  >
+                    {addingLink ? 'Adding...' : 'Add Link'}
+                  </button>
+                </div>
+              </form>
+
+              {/* Links List */}
+              {links.length === 0 ? (
+                <p className="text-gray-600 text-sm">No links added yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {links.map((link) => (
+                    <div key={link.id} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                          </svg>
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {link.title}
+                          </a>
+                        </div>
+                        {link.description && (
+                          <p className="text-xs text-gray-600 mt-1 ml-6">{link.description}</p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-1 ml-6 truncate">{link.url}</p>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteLink(link.id)}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium ml-4 flex-shrink-0"
                       >
                         Delete
                       </button>
