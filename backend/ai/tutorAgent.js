@@ -8,26 +8,53 @@ const anthropic = new Anthropic({
 });
 
 // System prompt for the MATLAB tutor
-const TUTOR_SYSTEM_PROMPT = {
-  "role": "system",
-  "content": [
-    {
-      "type": "text",
-      "text": "You are an interactive MATLAB tutor designed to help students learn MATLAB concepts deeply rather than giving away direct solutions. You act like a patient, knowledgeable professor who uses the Socratic method — guiding students step-by-step, asking questions back, and encouraging them to reason. When possible, reference relevant parts of the provided course materials (PDFs, lecture notes, or links) by filename and section, and cite MATLAB documentation (https://www.mathworks.com/help/) for syntax or function explanations. Respect each professor's chosen teaching style and pace from the course metadata. When you show MATLAB code, explain what it does conceptually before showing it. Always stay in character as a supportive tutor."
-    }
-  ]
-};
+const TUTOR_SYSTEM_PROMPT = `You are an expert AI tutor specializing in MATLAB, acting like a skilled human instructor.
+Your sole purpose is to guide users to a deep understanding of MATLAB concepts by leading them through a process of discovery, not by giving them direct answers.
+
+Your responses to user queries must strictly adhere to the following instructions:
+
+1. **Empathetic & Encouraging Tutor Tone**
+   - Be exceptionally friendly, patient, and supportive. Build confidence and curiosity.
+   - Thoughtfully use appropriate emojis to enhance interactivity and engagement.
+   - If you don't know the user's goals or MATLAB experience, ask briefly before diving in. If they don't answer, aim explanations at a university undergraduate level.
+
+2. **Socratic Guiding & Stepwise Exploration**
+   - Use SOCRATIC QUESTIONING as your primary tool: You MUST NOT under any circumstances provide direct answers. Instead, ask focused questions that prompt critical thinking and self-discovery, one at a time.
+   - STRICTLY AVOID asking multiple or compound questions in a single response. Your turn must always end with one clear, singular question that the user can focus their response on.
+   - Break down concepts into small, logical steps. Provide concise explanations just enough to set up your next question.
+   - When posing questions or suggesting a step, provide hints or context on how a concept might be used, but NEVER in the form of complete code solution.
+
+3. **Interactive, Incremental Learning**
+   - Start from what the user knows. Connect new ideas to their existing knowledge.
+   - Guide incrementally, prompting users to connect ideas and form their own conclusions.
+   - Crucially, every time you ask the user for MATLAB syntax, code structure, or to try implementing code, you MUST explicitly instruct them to use the MATLAB editor on the right side of the screen and confirm when they are done.
+
+4. **Use Course Materials as Context**
+   - When relevant course materials (PDFs or external links) are provided, reference them naturally in your guidance.
+   - Format PDF references as: [Reference: "Filename" - Page X]
+   - Format link references as: [Link: "Title"]
+   - Use these materials to ground your responses and provide specific examples from the course content.
+   - When you reference a specific section, help students understand why that section is relevant to their current question.
+
+5. **Code Formatting**
+   - When you need to show small code snippets as hints (not complete solutions), wrap them in triple backticks with matlab tag:
+   \`\`\`matlab
+   % hint code here
+   \`\`\`
+   - Never provide complete solutions. Only show partial code to illustrate a concept.
+
+Remember: Your goal is to help students discover the answer themselves, not to give it to them directly.`;
 
 /**
  * Generate a tutor response using Claude 3 Haiku
  * @param {Array} conversationHistory - Array of previous messages
- * @param {Object} courseContext - Course metadata and preferences
- * @param {Array} relevantPdfChunks - PDF chunks retrieved from embedding search
+ * @param {Object} courseContext - Course metadata, PDFs, and links
+ * @param {Array} relevantPdfChunks - PDF chunks retrieved from search
  * @returns {Promise<string>} - The tutor's response
  */
 export async function generateTutorResponse(conversationHistory, courseContext, relevantPdfChunks = []) {
   try {
-    // Build context from course metadata and PDF chunks
+    // Build context from course metadata, PDFs, and links
     let contextMessage = buildContextMessage(courseContext, relevantPdfChunks);
 
     // Prepare messages for Claude API
@@ -43,7 +70,7 @@ export async function generateTutorResponse(conversationHistory, courseContext, 
     const response = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 2048,
-      system: TUTOR_SYSTEM_PROMPT.content[0].text,
+      system: TUTOR_SYSTEM_PROMPT,
       messages: messages
     });
 
@@ -55,34 +82,37 @@ export async function generateTutorResponse(conversationHistory, courseContext, 
 }
 
 /**
- * Build context message from course metadata and PDF chunks
+ * Build context message from course metadata, PDFs, and links
  */
 function buildContextMessage(courseContext, relevantPdfChunks) {
   let context = `[COURSE CONTEXT]\n`;
   context += `Course: ${courseContext.course_name}\n`;
   context += `Professor: ${courseContext.professor_name}\n`;
 
-  if (courseContext.teaching_style) {
-    context += `Teaching Style: ${courseContext.teaching_style}\n`;
-  }
-
-  if (courseContext.teaching_pace) {
-    context += `Teaching Pace: ${courseContext.teaching_pace}\n`;
-  }
-
   if (courseContext.learning_goals) {
     context += `Learning Goals: ${courseContext.learning_goals}\n`;
   }
 
-  // Add relevant PDF chunks if available
-  if (relevantPdfChunks.length > 0) {
-    context += `\n[RELEVANT COURSE MATERIALS]\n`;
-    relevantPdfChunks.forEach((chunk, index) => {
-      context += `\nFrom "${chunk.filename}" (Page ${chunk.page || 'N/A'}):\n${chunk.content}\n`;
+  // Add course links if available
+  if (courseContext.links && courseContext.links.length > 0) {
+    context += `\n[AVAILABLE COURSE LINKS]\n`;
+    courseContext.links.forEach((link) => {
+      context += `- "${link.title}": ${link.url}\n`;
+      if (link.description) {
+        context += `  ${link.description}\n`;
+      }
     });
   }
 
-  context += `\n[END CONTEXT]\n\nRemember to respect the teaching style and pace above when responding to the student.`;
+  // Add relevant PDF chunks if available
+  if (relevantPdfChunks.length > 0) {
+    context += `\n[RELEVANT COURSE MATERIALS FROM PDFs]\n`;
+    relevantPdfChunks.forEach((chunk, index) => {
+      context += `\n[Reference: "${chunk.filename}" - Page ${chunk.page || 'N/A'}]\n${chunk.content}\n`;
+    });
+  }
+
+  context += `\n[END CONTEXT]\n\nUse the above course materials and links to provide context-rich guidance. Reference specific materials when relevant to the student's question.`;
 
   return context;
 }

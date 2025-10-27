@@ -3,7 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Debug: Log environment variables (remove in production)
+console.log('🔑 Supabase URL loaded:', supabaseUrl ? '✅ YES' : '❌ NO');
+console.log('🔑 Supabase Key loaded:', supabaseAnonKey ? '✅ YES' : '❌ NO');
+
 if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ Missing environment variables!');
+  console.error('VITE_SUPABASE_URL:', supabaseUrl);
+  console.error('VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'EXISTS' : 'MISSING');
   throw new Error('Missing Supabase environment variables');
 }
 

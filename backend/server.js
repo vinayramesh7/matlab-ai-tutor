@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import courseRoutes from './routes/courseRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import pdfRoutes from './routes/pdfRoutes.js';
+import linkRoutes from './routes/linkRoutes.js';
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/courses', courseRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/pdfs', pdfRoutes);
+app.use('/api/links', linkRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

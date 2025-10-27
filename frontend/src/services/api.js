@@ -99,3 +99,20 @@ export const pdfAPI = {
     method: 'DELETE',
   }),
 };
+
+// Link API
+export const linkAPI = {
+  getAll: (courseId) => apiRequest(`/links/${courseId}`),
+
+  add: (courseId, linkData) => apiRequest('/links', {
+    method: 'POST',
+    body: JSON.stringify({
+      course_id: courseId,
+      ...linkData,
+    }),
+  }),
+
+  delete: (id) => apiRequest(`/links/${id}`, {
+    method: 'DELETE',
+  }),
+};

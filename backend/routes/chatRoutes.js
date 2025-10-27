@@ -31,13 +31,19 @@ router.post('/message', async (req, res) => {
       return res.status(404).json({ error: 'Course not found' });
     }
 
+    // Fetch course links
+    const { data: links } = await supabase
+      .from('course_links')
+      .select('*')
+      .eq('course_id', course_id)
+      .order('created_at', { ascending: true });
+
     // Prepare course context for the tutor
     const courseContext = {
       course_name: course.course_name,
       professor_name: course.profiles?.full_name || 'Professor',
-      teaching_style: course.teaching_style,
-      teaching_pace: course.teaching_pace,
-      learning_goals: course.learning_goals
+      learning_goals: course.learning_goals,
+      links: links || []
     };
 
     // Retrieve PDF chunks for this course
