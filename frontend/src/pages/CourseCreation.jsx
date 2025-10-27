@@ -80,12 +80,23 @@ export default function CourseCreation() {
         await courseAPI.update(courseId, formData);
         setSuccess('Course updated successfully!');
       } else {
+        // Create course
         const newCourse = await courseAPI.create(formData);
-        setSuccess('Course created successfully!');
+
+        // Create all links for the new course
+        if (links.length > 0) {
+          await Promise.all(
+            links.map(link => linkAPI.add(newCourse.id, link))
+          );
+        }
+
+        setSuccess('Course created successfully! You can now upload PDFs.');
+        // Navigate to edit mode to allow PDF uploads
         navigate(`/courses/${newCourse.id}/edit`);
       }
     } catch (err) {
-      setError(err.message || 'Failed to save course');
+      setError(err.message || 'Failed to save course. Please try logging in again.');
+      console.error('Course save error:', err);
     } finally {
       setLoading(false);
     }
@@ -130,27 +141,29 @@ export default function CourseCreation() {
   const handleAddLink = async (e) => {
     e.preventDefault();
 
-    if (!isEditMode) {
-      alert('Please save the course first before adding links');
-      return;
-    }
-
     if (!newLink.title || !newLink.url) {
       setError('Link title and URL are required');
       return;
     }
 
-    setAddingLink(true);
     setError('');
 
-    try {
-      const addedLink = await linkAPI.add(courseId, newLink);
-      setLinks([...links, addedLink]);
+    if (isEditMode) {
+      // In edit mode, save to database immediately
+      setAddingLink(true);
+      try {
+        const addedLink = await linkAPI.add(courseId, newLink);
+        setLinks([...links, addedLink]);
+        setNewLink({ title: '', url: '', description: '' });
+      } catch (err) {
+        setError(err.message || 'Failed to add link');
+      } finally {
+        setAddingLink(false);
+      }
+    } else {
+      // In create mode, just add to local state
+      setLinks([...links, { ...newLink, id: Date.now() }]); // Temporary ID
       setNewLink({ title: '', url: '', description: '' });
-    } catch (err) {
-      setError(err.message || 'Failed to add link');
-    } finally {
-      setAddingLink(false);
     }
   };
 
@@ -159,11 +172,17 @@ export default function CourseCreation() {
       return;
     }
 
-    try {
-      await linkAPI.delete(linkId);
+    if (isEditMode) {
+      // In edit mode, delete from database
+      try {
+        await linkAPI.delete(linkId);
+        setLinks(links.filter(l => l.id !== linkId));
+      } catch (err) {
+        setError(err.message || 'Failed to delete link');
+      }
+    } else {
+      // In create mode, just remove from local state
       setLinks(links.filter(l => l.id !== linkId));
-    } catch (err) {
-      setError(err.message || 'Failed to delete link');
     }
   };
 
@@ -251,15 +270,123 @@ export default function CourseCreation() {
                 Note: The AI tutor uses a Socratic teaching method to guide students through discovery
               </p>
             </div>
+          </form>
 
+          {/* Course Links Section (always visible) */}
+          <div className="mt-8 pt-8 border-t border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Course Links & Resources (Optional)</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Add external links to MATLAB documentation, tutorials, or other learning resources. The AI tutor will reference these when helping students.
+            </p>
+
+            {/* Add Link Form */}
+            <form onSubmit={handleAddLink} className="bg-gray-50 p-4 rounded-lg mb-4">
+              <div className="grid gap-3">
+                <div>
+                  <label htmlFor="link_title" className="block text-sm font-medium text-gray-700 mb-1">
+                    Link Title *
+                  </label>
+                  <input
+                    type="text"
+                    id="link_title"
+                    value={newLink.title}
+                    onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                    placeholder="e.g., MATLAB Arrays Documentation"
+                    disabled={addingLink}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="link_url" className="block text-sm font-medium text-gray-700 mb-1">
+                    URL *
+                  </label>
+                  <input
+                    type="url"
+                    id="link_url"
+                    value={newLink.url}
+                    onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                    placeholder="https://..."
+                    disabled={addingLink}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="link_description" className="block text-sm font-medium text-gray-700 mb-1">
+                    Description (Optional)
+                  </label>
+                  <textarea
+                    id="link_description"
+                    value={newLink.description}
+                    onChange={(e) => setNewLink({ ...newLink, description: e.target.value })}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                    placeholder="Brief description of this resource..."
+                    disabled={addingLink}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={addingLink || !newLink.title || !newLink.url}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  {addingLink ? 'Adding...' : 'Add Link'}
+                </button>
+              </div>
+            </form>
+
+            {/* Links List */}
+            {links.length === 0 ? (
+              <p className="text-gray-600 text-sm">No links added yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {links.map((link) => (
+                  <div key={link.id} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2">
+                        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline"
+                        >
+                          {link.title}
+                        </a>
+                      </div>
+                      {link.description && (
+                        <p className="text-xs text-gray-600 mt-1 ml-6">{link.description}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1 ml-6 truncate">{link.url}</p>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteLink(link.id)}
+                      className="text-red-600 hover:text-red-800 text-sm font-medium ml-4 flex-shrink-0"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Save/Create Button */}
+          <div className="mt-6">
             <button
-              type="submit"
+              onClick={handleSubmit}
               disabled={loading}
-              className="w-full bg-primary-600 text-white py-2 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              className="w-full bg-primary-600 text-white py-3 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-lg"
             >
               {loading ? 'Saving...' : isEditMode ? 'Update Course' : 'Create Course'}
             </button>
-          </form>
+            {!isEditMode && links.length > 0 && (
+              <p className="mt-2 text-sm text-gray-600 text-center">
+                {links.length} link{links.length !== 1 ? 's' : ''} will be added to the course
+              </p>
+            )}
+          </div>
 
           {/* PDF Upload Section (only in edit mode) */}
           {isEditMode && (
@@ -297,108 +424,6 @@ export default function CourseCreation() {
                       <button
                         onClick={() => handleDeletePdf(pdf.id)}
                         className="text-red-600 hover:text-red-800 text-sm font-medium"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Course Links Section (only in edit mode) */}
-          {isEditMode && (
-            <div className="mt-8 pt-8 border-t border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Course Links & Resources</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Add external links to MATLAB documentation, tutorials, or other learning resources. The AI tutor will reference these when helping students.
-              </p>
-
-              {/* Add Link Form */}
-              <form onSubmit={handleAddLink} className="bg-gray-50 p-4 rounded-lg mb-4">
-                <div className="grid gap-3">
-                  <div>
-                    <label htmlFor="link_title" className="block text-sm font-medium text-gray-700 mb-1">
-                      Link Title *
-                    </label>
-                    <input
-                      type="text"
-                      id="link_title"
-                      value={newLink.title}
-                      onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                      placeholder="e.g., MATLAB Arrays Documentation"
-                      disabled={addingLink}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="link_url" className="block text-sm font-medium text-gray-700 mb-1">
-                      URL *
-                    </label>
-                    <input
-                      type="url"
-                      id="link_url"
-                      value={newLink.url}
-                      onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                      placeholder="https://..."
-                      disabled={addingLink}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="link_description" className="block text-sm font-medium text-gray-700 mb-1">
-                      Description (Optional)
-                    </label>
-                    <textarea
-                      id="link_description"
-                      value={newLink.description}
-                      onChange={(e) => setNewLink({ ...newLink, description: e.target.value })}
-                      rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                      placeholder="Brief description of this resource..."
-                      disabled={addingLink}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={addingLink || !newLink.title || !newLink.url}
-                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                  >
-                    {addingLink ? 'Adding...' : 'Add Link'}
-                  </button>
-                </div>
-              </form>
-
-              {/* Links List */}
-              {links.length === 0 ? (
-                <p className="text-gray-600 text-sm">No links added yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {links.map((link) => (
-                    <div key={link.id} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                          </svg>
-                          <a
-                            href={link.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline"
-                          >
-                            {link.title}
-                          </a>
-                        </div>
-                        {link.description && (
-                          <p className="text-xs text-gray-600 mt-1 ml-6">{link.description}</p>
-                        )}
-                        <p className="text-xs text-gray-400 mt-1 ml-6 truncate">{link.url}</p>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteLink(link.id)}
-                        className="text-red-600 hover:text-red-800 text-sm font-medium ml-4 flex-shrink-0"
                       >
                         Delete
                       </button>

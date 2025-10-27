@@ -12,21 +12,40 @@ const getAuthToken = async () => {
 const apiRequest = async (endpoint, options = {}) => {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'API request failed');
+  if (!token && !endpoint.includes('/health')) {
+    throw new Error('Not authenticated. Please log in again.');
   }
 
-  return response.json();
+  // Add timeout
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...options.headers,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || `Request failed with status ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out. Please check your connection and try again.');
+    }
+    throw error;
+  }
 };
 
 // Course API
@@ -73,24 +92,44 @@ export const chatAPI = {
 export const pdfAPI = {
   upload: async (courseId, file) => {
     const token = await getAuthToken();
+
+    if (!token) {
+      throw new Error('Not authenticated. Please log in again.');
+    }
+
     const formData = new FormData();
     formData.append('pdf', file);
     formData.append('course_id', courseId);
 
-    const response = await fetch(`${API_BASE_URL}/pdfs/upload`, {
-      method: 'POST',
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-      body: formData,
-    });
+    // Add timeout for long uploads
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Upload failed');
+    try {
+      const response = await fetch(`${API_BASE_URL}/pdfs/upload`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(error.error || 'Upload failed');
+      }
+
+      return response.json();
+    } catch (error) {
+      clearTimeout(timeout);
+      if (error.name === 'AbortError') {
+        throw new Error('Upload timed out. Please try a smaller PDF or check your connection.');
+      }
+      throw error;
     }
-
-    return response.json();
   },
 
   getAll: (courseId) => apiRequest(`/pdfs/${courseId}`),
