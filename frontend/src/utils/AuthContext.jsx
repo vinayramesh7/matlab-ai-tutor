@@ -21,17 +21,39 @@ export const AuthProvider = ({ children }) => {
     const initAuth = async () => {
       try {
         console.log('🔄 Initializing auth...');
-        const currentUser = await getCurrentUser();
-        console.log('👤 Current user:', currentUser ? currentUser.email : 'None');
-        setUser(currentUser);
 
-        if (currentUser) {
-          const userProfile = await getProfile(currentUser.id);
-          console.log('📋 User profile:', userProfile);
-          setProfile(userProfile);
+        // First, check if we have a valid session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error('❌ Session error:', sessionError);
+          // Clear invalid session
+          await supabase.auth.signOut();
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          return;
         }
+
+        if (!session) {
+          console.log('👤 No active session');
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        console.log('👤 Current user:', session.user.email);
+        setUser(session.user);
+
+        // Get profile
+        const userProfile = await getProfile(session.user.id);
+        console.log('📋 User profile:', userProfile);
+        setProfile(userProfile);
       } catch (error) {
         console.error('❌ Auth initialization error:', error);
+        // Clear everything on error
+        await supabase.auth.signOut();
         setUser(null);
         setProfile(null);
       } finally {
