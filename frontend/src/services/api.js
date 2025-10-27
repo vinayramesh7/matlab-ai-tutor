@@ -2,10 +2,42 @@ import { supabase } from './supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Helper to get auth token
+// Helper to get auth token with timeout
 const getAuthToken = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token;
+  console.log('🔐 Getting auth token...');
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+    const result = await supabase.auth.getSession();
+    clearTimeout(timeout);
+
+    const token = result?.data?.session?.access_token;
+    console.log('🔑 Token retrieved:', token ? '✅ Yes' : '❌ None');
+    return token || null;
+  } catch (err) {
+    console.error('❌ getAuthToken error:', err.message);
+    // If timeout or error, try to get from local storage directly
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.includes('sb-') && key.includes('-auth-token')) {
+        try {
+          const storageSession = localStorage.getItem(key);
+          const parsed = JSON.parse(storageSession);
+          const token = parsed?.access_token;
+          if (token) {
+            console.log('🔑 Fallback token from storage:', '✅ Yes');
+            return token;
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+    console.log('🔑 No fallback token found');
+    return null;
+  }
 };
 
 // Helper for API requests
