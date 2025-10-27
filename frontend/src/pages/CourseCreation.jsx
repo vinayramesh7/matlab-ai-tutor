@@ -75,28 +75,35 @@ export default function CourseCreation() {
     setSuccess('');
     setLoading(true);
 
+    console.log('📝 Submitting course...', { isEditMode, formData, linksCount: links.length });
+
     try {
       if (isEditMode) {
+        console.log('📝 Updating existing course...');
         await courseAPI.update(courseId, formData);
         setSuccess('Course updated successfully!');
       } else {
-        // Create course
+        console.log('📝 Creating new course...');
         const newCourse = await courseAPI.create(formData);
+        console.log('✅ Course created:', newCourse);
 
         // Create all links for the new course
         if (links.length > 0) {
+          console.log('🔗 Creating', links.length, 'links...');
           await Promise.all(
             links.map(link => linkAPI.add(newCourse.id, link))
           );
+          console.log('✅ Links created');
         }
 
         setSuccess('Course created successfully! You can now upload PDFs.');
+        console.log('✅ Navigating to edit page...');
         // Navigate to edit mode to allow PDF uploads
         navigate(`/courses/${newCourse.id}/edit`);
       }
     } catch (err) {
-      setError(err.message || 'Failed to save course. Please try logging in again.');
-      console.error('Course save error:', err);
+      console.error('❌ Course save error:', err);
+      setError(err.message || 'Failed to save course. Please try again.');
     } finally {
       setLoading(false);
     }
