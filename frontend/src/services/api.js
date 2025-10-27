@@ -10,18 +10,28 @@ const getAuthToken = async () => {
 
 // Helper for API requests
 const apiRequest = async (endpoint, options = {}) => {
+  console.log('🌐 API Request:', endpoint, options.method || 'GET');
+
   const token = await getAuthToken();
+  console.log('🔑 Auth token:', token ? '✅ Present' : '❌ Missing');
 
   if (!token && !endpoint.includes('/health')) {
+    console.error('❌ No auth token - user not authenticated');
     throw new Error('Not authenticated. Please log in again.');
   }
 
   // Add timeout
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+  const timeout = setTimeout(() => {
+    console.error('⏱️ Request timeout after 30s');
+    controller.abort();
+  }, 30000); // 30 second timeout
 
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    console.log('📡 Fetching:', url);
+
+    const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -32,18 +42,24 @@ const apiRequest = async (endpoint, options = {}) => {
     });
 
     clearTimeout(timeout);
+    console.log('📥 Response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      console.error('❌ API Error:', error);
       throw new Error(error.error || `Request failed with status ${response.status}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    console.log('✅ API Success:', data);
+    return data;
   } catch (error) {
     clearTimeout(timeout);
     if (error.name === 'AbortError') {
+      console.error('⏱️ Request aborted - timeout');
       throw new Error('Request timed out. Please check your connection and try again.');
     }
+    console.error('❌ API Request failed:', error);
     throw error;
   }
 };
