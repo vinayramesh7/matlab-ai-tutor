@@ -54,18 +54,20 @@ export const AuthProvider = ({ children }) => {
           return;
         }
 
-        // Now try to get session from Supabase with timeout
+        // Now try to get session from Supabase with timeout using Promise.race
         console.log('🔍 Fetching session from Supabase...');
         let session = null;
         try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => {
-            console.warn('⏱️ getSession timeout - aborting');
-            controller.abort();
-          }, 2000); // 2 second timeout
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => {
+              console.warn('⏱️ getSession timeout after 2s');
+              reject(new Error('TIMEOUT'));
+            }, 2000)
+          );
 
-          const result = await supabase.auth.getSession();
-          clearTimeout(timeout);
+          const sessionPromise = supabase.auth.getSession();
+
+          const result = await Promise.race([sessionPromise, timeoutPromise]);
 
           if (result?.error) {
             console.error('❌ Session error:', result.error);
@@ -75,15 +77,23 @@ export const AuthProvider = ({ children }) => {
           session = result?.data?.session;
           console.log('📦 Session retrieved:', session ? 'Yes' : 'No');
         } catch (err) {
-          console.error('❌ getSession failed:', err.message);
-          // Just clear state, don't try to call signOut
-          // Clean up localStorage
-          for (let i = localStorage.length - 1; i >= 0; i--) {
+          console.error('❌ getSession failed:', err.message || err.name);
+          console.log('🧹 Clearing all Supabase data from localStorage...');
+
+          // Aggressively clean up ALL Supabase localStorage
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.includes('sb-')) {
-              localStorage.removeItem(key);
+              keysToRemove.push(key);
             }
           }
+          keysToRemove.forEach(key => {
+            console.log('🗑️ Removing:', key);
+            localStorage.removeItem(key);
+          });
+
+          console.log('✅ localStorage cleared, setting loading to false');
           setUser(null);
           setProfile(null);
           setLoading(false);
