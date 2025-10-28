@@ -61,14 +61,41 @@ export const AuthProvider = ({ children }) => {
         console.log('👤 User from localStorage:', sessionData.user.email);
         setUser(sessionData.user);
 
-        // Get profile
+        // Get profile with timeout
         try {
-          const userProfile = await getProfile(sessionData.user.id);
+          console.log('📋 Loading profile for user:', sessionData.user.id);
+
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => {
+              console.warn('⏱️ getProfile timeout after 3s');
+              reject(new Error('PROFILE_TIMEOUT'));
+            }, 3000)
+          );
+
+          const profilePromise = getProfile(sessionData.user.id);
+
+          const userProfile = await Promise.race([profilePromise, timeoutPromise]);
+
           console.log('📋 User profile loaded:', userProfile);
           setProfile(userProfile);
         } catch (profileErr) {
-          console.error('❌ Failed to load profile:', profileErr);
-          setProfile(null);
+          console.error('❌ Failed to load profile:', profileErr.message || profileErr);
+
+          // Fallback: Try to construct profile from user metadata
+          if (sessionData.user?.user_metadata) {
+            const fallbackProfile = {
+              id: sessionData.user.id,
+              email: sessionData.user.email,
+              full_name: sessionData.user.user_metadata.full_name ||
+                        sessionData.user.email?.split('@')[0] || 'User',
+              role: sessionData.user.user_metadata.role || 'student'
+            };
+            console.log('🔄 Using fallback profile from user metadata:', fallbackProfile);
+            setProfile(fallbackProfile);
+          } else {
+            console.warn('⚠️ No profile available, continuing without it');
+            setProfile(null);
+          }
         }
       } catch (error) {
         console.error('❌ Auth initialization error:', error);
