@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }) => {
       try {
         console.log('🔄 Initializing auth...');
 
-        // Validate localStorage session first
+        // Validate localStorage session first and clean up expired ones
         let hasValidLocalSession = false;
         try {
           for (let i = 0; i < localStorage.length; i++) {
@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }) => {
               if (expiresAt && expiresAt <= Math.floor(Date.now() / 1000)) {
                 console.warn('⚠️ Expired session in localStorage - clearing');
                 localStorage.removeItem(key);
-              } else if (parsed?.access_token) {
+              } else if (parsed?.access_token && expiresAt) {
                 hasValidLocalSession = true;
               }
             }
@@ -45,10 +45,9 @@ export const AuthProvider = ({ children }) => {
           console.warn('⚠️ localStorage validation failed:', err.message);
         }
 
-        // If no valid local session, clear everything and return
+        // If no valid local session, just clear state - don't call signOut
         if (!hasValidLocalSession) {
-          console.log('👤 No valid local session');
-          await supabase.auth.signOut();
+          console.log('👤 No valid local session - clearing state');
           setUser(null);
           setProfile(null);
           setLoading(false);
@@ -56,10 +55,14 @@ export const AuthProvider = ({ children }) => {
         }
 
         // Now try to get session from Supabase with timeout
+        console.log('🔍 Fetching session from Supabase...');
         let session = null;
         try {
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
+          const timeout = setTimeout(() => {
+            console.warn('⏱️ getSession timeout - aborting');
+            controller.abort();
+          }, 2000); // 2 second timeout
 
           const result = await supabase.auth.getSession();
           clearTimeout(timeout);
@@ -70,11 +73,11 @@ export const AuthProvider = ({ children }) => {
           }
 
           session = result?.data?.session;
+          console.log('📦 Session retrieved:', session ? 'Yes' : 'No');
         } catch (err) {
           console.error('❌ getSession failed:', err.message);
-          // Clear everything on error
-          await supabase.auth.signOut();
-          // Aggressive cleanup
+          // Just clear state, don't try to call signOut
+          // Clean up localStorage
           for (let i = localStorage.length - 1; i >= 0; i--) {
             const key = localStorage.key(i);
             if (key && key.includes('sb-')) {
@@ -88,7 +91,7 @@ export const AuthProvider = ({ children }) => {
         }
 
         if (!session) {
-          console.log('👤 No active session');
+          console.log('👤 No active session from Supabase');
           setUser(null);
           setProfile(null);
           setLoading(false);
@@ -99,14 +102,18 @@ export const AuthProvider = ({ children }) => {
         setUser(session.user);
 
         // Get profile
-        const userProfile = await getProfile(session.user.id);
-        console.log('📋 User profile:', userProfile);
-        setProfile(userProfile);
+        try {
+          const userProfile = await getProfile(session.user.id);
+          console.log('📋 User profile:', userProfile);
+          setProfile(userProfile);
+        } catch (profileErr) {
+          console.error('❌ Failed to load profile:', profileErr);
+          // Continue anyway - user is authenticated even without profile
+          setProfile(null);
+        }
       } catch (error) {
         console.error('❌ Auth initialization error:', error);
-        // Clear everything on error
-        await supabase.auth.signOut();
-        // Aggressive cleanup of localStorage
+        // Just clear state - don't call signOut to avoid hanging
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const key = localStorage.key(i);
           if (key && key.includes('sb-')) {
