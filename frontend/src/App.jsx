@@ -42,10 +42,17 @@ const DashboardRouter = () => {
     );
   }
 
+  // Debug logging
+  console.log('🔍 DashboardRouter - Profile:', profile);
+  console.log('🔍 DashboardRouter - Role:', profile?.role);
+  console.log('🔍 DashboardRouter - Is Professor:', profile?.role === 'professor');
+
   if (profile?.role === 'professor') {
+    console.log('✅ Showing ProfessorDashboard');
     return <ProfessorDashboard />;
   }
 
+  console.log('👨‍🎓 Showing StudentDashboard');
   return <StudentDashboard />;
 };
 
