@@ -55,8 +55,28 @@ export const signIn = async (email, password) => {
 };
 
 export const signOut = async () => {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  console.log('🚪 Signing out...');
+
+  // Clear all Supabase data from localStorage
+  const keysToRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.includes('sb-')) {
+      keysToRemove.push(key);
+    }
+  }
+
+  keysToRemove.forEach(key => {
+    console.log('🗑️ Removing:', key);
+    localStorage.removeItem(key);
+  });
+
+  console.log('✅ Sign out complete');
+
+  // Try to call Supabase signOut but don't wait for it (it hangs)
+  supabase.auth.signOut().catch(err => {
+    console.warn('⚠️ Supabase signOut failed (ignored):', err);
+  });
 };
 
 export const getCurrentUser = async () => {
