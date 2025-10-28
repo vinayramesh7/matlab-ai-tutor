@@ -2,42 +2,67 @@ import { supabase } from './supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Helper to get auth token with timeout
-const getAuthToken = async () => {
-  console.log('🔐 Getting auth token...');
+// Token cache to avoid multiple concurrent getSession calls
+let cachedToken = null;
+let tokenTimestamp = 0;
+const TOKEN_CACHE_MS = 5000; // Cache token for 5 seconds
 
+// Helper to get auth token with caching
+const getAuthToken = async () => {
+  // Return cached token if valid
+  const now = Date.now();
+  if (cachedToken && (now - tokenTimestamp) < TOKEN_CACHE_MS) {
+    console.log('🔑 Using cached token');
+    return cachedToken;
+  }
+
+  console.log('🔐 Getting fresh auth token...');
+
+  // Try localStorage first (faster and more reliable)
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.includes('sb-') && key.includes('-auth-token')) {
+        const storageSession = localStorage.getItem(key);
+        const parsed = JSON.parse(storageSession);
+        const token = parsed?.access_token;
+        const expiresAt = parsed?.expires_at;
+
+        // Check if token is not expired
+        if (token && expiresAt && expiresAt > Math.floor(Date.now() / 1000)) {
+          console.log('🔑 Token from localStorage: ✅ Valid');
+          cachedToken = token;
+          tokenTimestamp = now;
+          return token;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ localStorage token check failed:', err.message);
+  }
+
+  // Fallback to Supabase getSession with timeout
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+    const timeout = setTimeout(() => controller.abort(), 2000); // 2 second timeout
 
     const result = await supabase.auth.getSession();
     clearTimeout(timeout);
 
     const token = result?.data?.session?.access_token;
-    console.log('🔑 Token retrieved:', token ? '✅ Yes' : '❌ None');
-    return token || null;
+    if (token) {
+      console.log('🔑 Token from Supabase: ✅ Valid');
+      cachedToken = token;
+      tokenTimestamp = now;
+      return token;
+    }
   } catch (err) {
     console.error('❌ getAuthToken error:', err.message);
-    // If timeout or error, try to get from local storage directly
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.includes('sb-') && key.includes('-auth-token')) {
-        try {
-          const storageSession = localStorage.getItem(key);
-          const parsed = JSON.parse(storageSession);
-          const token = parsed?.access_token;
-          if (token) {
-            console.log('🔑 Fallback token from storage:', '✅ Yes');
-            return token;
-          }
-        } catch {
-          continue;
-        }
-      }
-    }
-    console.log('🔑 No fallback token found');
-    return null;
   }
+
+  console.log('🔑 No valid token found');
+  cachedToken = null;
+  return null;
 };
 
 // Helper for API requests
