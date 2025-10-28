@@ -22,13 +22,65 @@ export const AuthProvider = ({ children }) => {
       try {
         console.log('🔄 Initializing auth...');
 
-        // First, check if we have a valid session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Validate localStorage session first
+        let hasValidLocalSession = false;
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.includes('sb-') && key.includes('-auth-token')) {
+              const storageSession = localStorage.getItem(key);
+              const parsed = JSON.parse(storageSession);
+              const expiresAt = parsed?.expires_at;
 
-        if (sessionError) {
-          console.error('❌ Session error:', sessionError);
-          // Clear invalid session
+              // Check if token is expired
+              if (expiresAt && expiresAt <= Math.floor(Date.now() / 1000)) {
+                console.warn('⚠️ Expired session in localStorage - clearing');
+                localStorage.removeItem(key);
+              } else if (parsed?.access_token) {
+                hasValidLocalSession = true;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('⚠️ localStorage validation failed:', err.message);
+        }
+
+        // If no valid local session, clear everything and return
+        if (!hasValidLocalSession) {
+          console.log('👤 No valid local session');
           await supabase.auth.signOut();
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        // Now try to get session from Supabase with timeout
+        let session = null;
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000);
+
+          const result = await supabase.auth.getSession();
+          clearTimeout(timeout);
+
+          if (result?.error) {
+            console.error('❌ Session error:', result.error);
+            throw result.error;
+          }
+
+          session = result?.data?.session;
+        } catch (err) {
+          console.error('❌ getSession failed:', err.message);
+          // Clear everything on error
+          await supabase.auth.signOut();
+          // Aggressive cleanup
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && key.includes('sb-')) {
+              localStorage.removeItem(key);
+            }
+          }
           setUser(null);
           setProfile(null);
           setLoading(false);
@@ -54,6 +106,13 @@ export const AuthProvider = ({ children }) => {
         console.error('❌ Auth initialization error:', error);
         // Clear everything on error
         await supabase.auth.signOut();
+        // Aggressive cleanup of localStorage
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && key.includes('sb-')) {
+            localStorage.removeItem(key);
+          }
+        }
         setUser(null);
         setProfile(null);
       } finally {
