@@ -4,13 +4,14 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
+if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Use service role key for backend operations - bypasses RLS
+export const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Helper function to get authenticated user from request
 export const getAuthUser = async (req) => {
