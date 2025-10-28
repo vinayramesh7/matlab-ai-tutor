@@ -22,8 +22,8 @@ export const AuthProvider = ({ children }) => {
       try {
         console.log('🔄 Initializing auth...');
 
-        // Validate localStorage session first and clean up expired ones
-        let hasValidLocalSession = false;
+        // Get session directly from localStorage - don't call getSession() as it hangs
+        let sessionData = null;
         try {
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
@@ -31,13 +31,17 @@ export const AuthProvider = ({ children }) => {
               const storageSession = localStorage.getItem(key);
               const parsed = JSON.parse(storageSession);
               const expiresAt = parsed?.expires_at;
+              const token = parsed?.access_token;
+              const user = parsed?.user;
 
               // Check if token is expired
               if (expiresAt && expiresAt <= Math.floor(Date.now() / 1000)) {
                 console.warn('⚠️ Expired session in localStorage - clearing');
                 localStorage.removeItem(key);
-              } else if (parsed?.access_token && expiresAt) {
-                hasValidLocalSession = true;
+              } else if (token && user && expiresAt) {
+                console.log('✅ Found valid session in localStorage');
+                sessionData = { token, user, expiresAt };
+                break;
               }
             }
           }
@@ -45,91 +49,29 @@ export const AuthProvider = ({ children }) => {
           console.warn('⚠️ localStorage validation failed:', err.message);
         }
 
-        // If no valid local session, just clear state - don't call signOut
-        if (!hasValidLocalSession) {
-          console.log('👤 No valid local session - clearing state');
+        // If no valid session found, clear state
+        if (!sessionData) {
+          console.log('👤 No valid session found');
           setUser(null);
           setProfile(null);
           setLoading(false);
           return;
         }
 
-        // Now try to get session from Supabase with timeout using Promise.race
-        console.log('🔍 Fetching session from Supabase...');
-        let session = null;
-        try {
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => {
-              console.warn('⏱️ getSession timeout after 2s');
-              reject(new Error('TIMEOUT'));
-            }, 2000)
-          );
-
-          const sessionPromise = supabase.auth.getSession();
-
-          const result = await Promise.race([sessionPromise, timeoutPromise]);
-
-          if (result?.error) {
-            console.error('❌ Session error:', result.error);
-            throw result.error;
-          }
-
-          session = result?.data?.session;
-          console.log('📦 Session retrieved:', session ? 'Yes' : 'No');
-        } catch (err) {
-          console.error('❌ getSession failed:', err.message || err.name);
-          console.log('🧹 Clearing all Supabase data from localStorage...');
-
-          // Aggressively clean up ALL Supabase localStorage
-          const keysToRemove = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.includes('sb-')) {
-              keysToRemove.push(key);
-            }
-          }
-          keysToRemove.forEach(key => {
-            console.log('🗑️ Removing:', key);
-            localStorage.removeItem(key);
-          });
-
-          console.log('✅ localStorage cleared, setting loading to false');
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-          return;
-        }
-
-        if (!session) {
-          console.log('👤 No active session from Supabase');
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-          return;
-        }
-
-        console.log('👤 Current user:', session.user.email);
-        setUser(session.user);
+        console.log('👤 User from localStorage:', sessionData.user.email);
+        setUser(sessionData.user);
 
         // Get profile
         try {
-          const userProfile = await getProfile(session.user.id);
-          console.log('📋 User profile:', userProfile);
+          const userProfile = await getProfile(sessionData.user.id);
+          console.log('📋 User profile loaded:', userProfile);
           setProfile(userProfile);
         } catch (profileErr) {
           console.error('❌ Failed to load profile:', profileErr);
-          // Continue anyway - user is authenticated even without profile
           setProfile(null);
         }
       } catch (error) {
         console.error('❌ Auth initialization error:', error);
-        // Just clear state - don't call signOut to avoid hanging
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const key = localStorage.key(i);
-          if (key && key.includes('sb-')) {
-            localStorage.removeItem(key);
-          }
-        }
         setUser(null);
         setProfile(null);
       } finally {
