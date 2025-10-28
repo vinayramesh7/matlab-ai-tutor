@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { clearTokenCache } from './api.js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -57,6 +58,9 @@ export const signIn = async (email, password) => {
 export const signOut = async () => {
   console.log('🚪 Signing out...');
 
+  // Clear token cache
+  clearTokenCache();
+
   // Clear all Supabase data from localStorage
   const keysToRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -71,12 +75,18 @@ export const signOut = async () => {
     localStorage.removeItem(key);
   });
 
-  console.log('✅ Sign out complete');
+  // Clear sessionStorage too
+  sessionStorage.clear();
+
+  console.log('✅ Sign out complete - reloading page');
 
   // Try to call Supabase signOut but don't wait for it (it hangs)
   supabase.auth.signOut().catch(err => {
     console.warn('⚠️ Supabase signOut failed (ignored):', err);
   });
+
+  // Force reload to /login to ensure clean state
+  window.location.href = '/login';
 };
 
 export const getCurrentUser = async () => {

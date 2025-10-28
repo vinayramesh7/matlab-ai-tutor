@@ -7,6 +7,13 @@ let cachedToken = null;
 let tokenTimestamp = 0;
 const TOKEN_CACHE_MS = 5000; // Cache token for 5 seconds
 
+// Export function to clear token cache (used during sign out)
+export const clearTokenCache = () => {
+  console.log('🧹 Clearing token cache');
+  cachedToken = null;
+  tokenTimestamp = 0;
+};
+
 // Helper to get auth token with caching
 const getAuthToken = async () => {
   // Return cached token if valid
