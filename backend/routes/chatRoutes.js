@@ -48,9 +48,14 @@ router.post('/message', async (req, res) => {
 
     // Retrieve PDF chunks for this course
     const pdfChunks = await getCoursePDFChunks(supabase, course_id);
+    console.log(`📚 Found ${pdfChunks.length} total PDF chunks for course`);
 
     // Search for relevant PDF chunks based on the student's message
-    const relevantChunks = searchRelevantChunks(message, pdfChunks, 3);
+    const relevantChunks = searchRelevantChunks(message, pdfChunks, 5);
+    console.log(`🔍 Found ${relevantChunks.length} relevant chunks for query: "${message}"`);
+    relevantChunks.forEach((chunk, i) => {
+      console.log(`  ${i + 1}. "${chunk.filename}" - Page ${chunk.page} (score: ${chunk.score})`);
+    });
 
     // Prepare conversation history for Claude API
     const formattedHistory = conversation_history.map(msg => ({
