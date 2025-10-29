@@ -1,33 +1,57 @@
 import pdfParse from 'pdf-parse-fork';
 
 /**
- * Extract and chunk text from PDF buffer
+ * Extract and chunk text from PDF buffer with accurate page numbers
  * @param {Buffer} pdfBuffer - PDF file buffer
  * @param {string} filename - Name of the PDF file
  * @returns {Promise<Array>} - Array of text chunks with metadata
  */
 export async function extractAndChunkPDF(pdfBuffer, filename) {
   try {
-    const data = await pdfParse(pdfBuffer);
-    const text = data.text;
+    // Extract PDF with page-level detail
+    const data = await pdfParse(pdfBuffer, {
+      // pdf-parse-fork gives us access to page content
+      pagerender: async (pageData) => {
+        const textContent = await pageData.getTextContent();
+        const text = textContent.items.map(item => item.str).join(' ');
+        return text;
+      }
+    });
 
-    // Split into chunks (roughly 500 characters each with overlap)
+    const chunks = [];
     const chunkSize = 500;
     const overlap = 100;
-    const chunks = [];
 
-    for (let i = 0; i < text.length; i += chunkSize - overlap) {
-      const chunk = text.slice(i, i + chunkSize);
-      if (chunk.trim().length > 50) { // Only keep meaningful chunks
-        chunks.push({
-          content: chunk.trim(),
-          filename: filename,
-          page: Math.floor(i / 2000) + 1, // Rough page estimation
-          start_char: i
-        });
+    // Process full text to maintain compatibility
+    const text = data.text;
+
+    // We'll estimate pages more accurately using page breaks in the text
+    // pdf-parse adds form feeds (\f) between pages
+    const pages = text.split('\f');
+
+    let currentCharPosition = 0;
+
+    pages.forEach((pageText, pageIndex) => {
+      const pageNumber = pageIndex + 1;
+      const pageStartChar = currentCharPosition;
+
+      // Chunk each page
+      for (let i = 0; i < pageText.length; i += chunkSize - overlap) {
+        const chunk = pageText.slice(i, i + chunkSize);
+        if (chunk.trim().length > 50) { // Only keep meaningful chunks
+          chunks.push({
+            content: chunk.trim(),
+            filename: filename,
+            page: pageNumber,
+            start_char: pageStartChar + i
+          });
+        }
       }
-    }
 
+      currentCharPosition += pageText.length + 1; // +1 for the form feed
+    });
+
+    console.log(`✅ Extracted ${chunks.length} chunks from ${pages.length} pages`);
     return chunks;
   } catch (error) {
     console.error('Error extracting PDF:', error);
@@ -43,7 +67,7 @@ export async function extractAndChunkPDF(pdfBuffer, filename) {
  * @param {number} topK - Number of chunks to return
  * @returns {Array} - Most relevant chunks
  */
-export function searchRelevantChunks(query, allChunks, topK = 3) {
+export function searchRelevantChunks(query, allChunks, topK = 5) {
   if (!allChunks || allChunks.length === 0) {
     return [];
   }
@@ -51,17 +75,29 @@ export function searchRelevantChunks(query, allChunks, topK = 3) {
   // Extract keywords from query (simple tokenization)
   const queryKeywords = extractKeywords(query.toLowerCase());
 
+  // Add concept-related keywords for better matching
+  const expandedKeywords = expandQueryKeywords(queryKeywords);
+
   // Score each chunk based on keyword matches
   const scoredChunks = allChunks.map(chunk => {
     const chunkText = chunk.content.toLowerCase();
     let score = 0;
 
+    // Score for primary keywords
     queryKeywords.forEach(keyword => {
-      // Count occurrences of each keyword
-      const regex = new RegExp(keyword, 'gi');
+      const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
       const matches = chunkText.match(regex);
       if (matches) {
-        score += matches.length * keyword.length; // Weight by keyword length
+        score += matches.length * keyword.length * 3; // Higher weight for exact keywords
+      }
+    });
+
+    // Score for expanded/related keywords
+    expandedKeywords.forEach(keyword => {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+      const matches = chunkText.match(regex);
+      if (matches) {
+        score += matches.length * keyword.length; // Lower weight for related keywords
       }
     });
 
@@ -73,6 +109,33 @@ export function searchRelevantChunks(query, allChunks, topK = 3) {
     .sort((a, b) => b.score - a.score)
     .filter(chunk => chunk.score > 0)
     .slice(0, topK);
+}
+
+/**
+ * Expand query keywords with related terms for better matching
+ */
+function expandQueryKeywords(keywords) {
+  const expansions = {
+    'loop': ['for', 'while', 'iteration', 'repeat', 'control flow'],
+    'loops': ['for', 'while', 'iteration', 'repeat', 'control flow'],
+    'function': ['functions', 'method', 'subroutine'],
+    'functions': ['function', 'method', 'subroutine'],
+    'array': ['arrays', 'matrix', 'matrices', 'vector'],
+    'arrays': ['array', 'matrix', 'matrices', 'vector'],
+    'plot': ['plotting', 'graph', 'visualization', 'figure'],
+    'variable': ['variables', 'data', 'value'],
+    'conditional': ['if', 'else', 'switch', 'case', 'condition'],
+    'error': ['errors', 'exception', 'debug', 'debugging']
+  };
+
+  const expanded = new Set();
+  keywords.forEach(keyword => {
+    if (expansions[keyword]) {
+      expansions[keyword].forEach(exp => expanded.add(exp));
+    }
+  });
+
+  return Array.from(expanded);
 }
 
 /**
