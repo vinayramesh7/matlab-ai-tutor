@@ -46,10 +46,7 @@ export default function ChatInterface() {
     try {
       const data = await pdfAPI.getAll(courseId);
       setPdfs(data);
-      // Automatically select first PDF if available
-      if (data.length > 0 && !selectedPdf) {
-        setSelectedPdf(data[0]);
-      }
+      // Don't auto-select PDF - let user click references to view
     } catch (err) {
       console.error('Failed to load PDFs:', err);
     }
