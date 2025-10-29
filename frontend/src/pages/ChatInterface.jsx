@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { courseAPI, chatAPI } from '../services/api';
+import { courseAPI, chatAPI, pdfAPI } from '../services/api';
 import { useAuth } from '../utils/AuthContext';
+import PDFViewer from '../components/PDFViewer';
 
 export default function ChatInterface() {
   const { courseId } = useParams();
@@ -12,11 +13,15 @@ export default function ChatInterface() {
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [error, setError] = useState('');
+  const [pdfs, setPdfs] = useState([]);
+  const [selectedPdf, setSelectedPdf] = useState(null);
+  const [selectedPage, setSelectedPage] = useState(1);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     loadCourse();
     loadChatHistory();
+    loadPDFs();
   }, [courseId]);
 
   useEffect(() => {
@@ -37,6 +42,19 @@ export default function ChatInterface() {
     }
   };
 
+  const loadPDFs = async () => {
+    try {
+      const data = await pdfAPI.getAll(courseId);
+      setPdfs(data);
+      // Automatically select first PDF if available
+      if (data.length > 0 && !selectedPdf) {
+        setSelectedPdf(data[0]);
+      }
+    } catch (err) {
+      console.error('Failed to load PDFs:', err);
+    }
+  };
+
   const loadChatHistory = async () => {
     try {
       const history = await chatAPI.getHistory(courseId);
@@ -46,6 +64,96 @@ export default function ChatInterface() {
     } finally {
       setLoadingHistory(false);
     }
+  };
+
+  const handlePdfReferenceClick = (filename, page) => {
+    console.log(`PDF reference clicked: ${filename}, page ${page}`);
+    // Find the PDF in the list
+    const pdf = pdfs.find(p => p.filename === filename);
+    if (pdf) {
+      setSelectedPdf(pdf);
+      setSelectedPage(page);
+    } else {
+      console.warn(`PDF not found: ${filename}`);
+      alert(`PDF "${filename}" not found in course materials.`);
+    }
+  };
+
+  // Parse PDF references from message content and make them clickable
+  const renderMessageContent = (content) => {
+    // Match pattern: [Reference: "filename" - Page X]
+    const pdfRefRegex = /\[Reference: "([^"]+)" - Page (\d+)\]/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = pdfRefRegex.exec(content)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        parts.push({
+          type: 'text',
+          content: content.substring(lastIndex, match.index)
+        });
+      }
+
+      // Add the PDF reference as a clickable element
+      const [fullMatch, filename, page] = match;
+      parts.push({
+        type: 'pdf_ref',
+        filename,
+        page: parseInt(page),
+        fullMatch
+      });
+
+      lastIndex = match.index + fullMatch.length;
+    }
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push({
+        type: 'text',
+        content: content.substring(lastIndex)
+      });
+    }
+
+    if (parts.length === 0) {
+      return <span className="whitespace-pre-wrap break-words">{content}</span>;
+    }
+
+    return (
+      <span className="whitespace-pre-wrap break-words">
+        {parts.map((part, idx) => {
+          if (part.type === 'text') {
+            return <span key={idx}>{part.content}</span>;
+          } else if (part.type === 'pdf_ref') {
+            return (
+              <button
+                key={idx}
+                onClick={() => handlePdfReferenceClick(part.filename, part.page)}
+                className="inline-flex items-center px-2 py-1 mx-1 text-xs font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                title={`Click to view ${part.filename} page ${part.page}`}
+              >
+                <svg
+                  className="w-3 h-3 mr-1"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+                {part.filename} - Page {part.page}
+              </button>
+            );
+          }
+          return null;
+        })}
+      </span>
+    );
   };
 
   const handleSendMessage = async (e) => {
@@ -150,11 +258,12 @@ export default function ChatInterface() {
         </div>
       </header>
 
-      {/* Chat Area */}
-      <div className="flex-1 overflow-hidden">
-        <div className="max-w-4xl mx-auto h-full flex flex-col px-4 sm:px-6 lg:px-8">
+      {/* Two-column layout: Chat on left, PDF viewer on right */}
+      <div className="flex-1 overflow-hidden flex">
+        {/* Chat Column */}
+        <div className="flex-1 flex flex-col border-r border-gray-200">
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto py-6 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
             {loadingHistory ? (
               <div className="text-center py-8">
                 <p className="text-gray-600">Loading conversation...</p>
@@ -201,7 +310,7 @@ export default function ChatInterface() {
                             {formatTime(msg.created_at)}
                           </span>
                         </div>
-                        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                        {renderMessageContent(msg.content)}
                       </div>
                     </div>
                   </div>
@@ -229,13 +338,13 @@ export default function ChatInterface() {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            <div className="mx-4 sm:mx-6 lg:mx-8 mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               {error}
             </div>
           )}
 
           {/* Input Area */}
-          <div className="flex-shrink-0 py-4">
+          <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 py-4">
             <form onSubmit={handleSendMessage} className="flex space-x-2">
               <input
                 type="text"
@@ -254,6 +363,14 @@ export default function ChatInterface() {
               </button>
             </form>
           </div>
+        </div>
+
+        {/* PDF Viewer Column */}
+        <div className="w-1/2 flex flex-col bg-white">
+          <PDFViewer
+            pdfUrl={selectedPdf?.file_url}
+            initialPage={selectedPage}
+          />
         </div>
       </div>
     </div>
