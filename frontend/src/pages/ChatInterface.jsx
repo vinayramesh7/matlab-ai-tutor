@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { courseAPI, chatAPI, pdfAPI } from '../services/api';
 import { useAuth } from '../utils/AuthContext';
 import PDFViewer from '../components/PDFViewer';
+import MatlabEditor from '../components/MatlabEditor';
 
 export default function ChatInterface() {
   const { courseId } = useParams();
@@ -14,8 +16,12 @@ export default function ChatInterface() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [error, setError] = useState('');
   const [pdfs, setPdfs] = useState([]);
+  const [showPdfOverlay, setShowPdfOverlay] = useState(false);
   const [selectedPdf, setSelectedPdf] = useState(null);
   const [selectedPage, setSelectedPage] = useState(1);
+  const [editorCode, setEditorCode] = useState('% Write your MATLAB code here\n\n');
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -46,7 +52,6 @@ export default function ChatInterface() {
     try {
       const data = await pdfAPI.getAll(courseId);
       setPdfs(data);
-      // Don't auto-select PDF - let user click references to view
     } catch (err) {
       console.error('Failed to load PDFs:', err);
     }
@@ -65,27 +70,24 @@ export default function ChatInterface() {
 
   const handlePdfReferenceClick = (filename, page) => {
     console.log(`PDF reference clicked: ${filename}, page ${page}`);
-    // Find the PDF in the list
     const pdf = pdfs.find(p => p.filename === filename);
     if (pdf) {
       setSelectedPdf(pdf);
       setSelectedPage(page);
+      setShowPdfOverlay(true);
     } else {
       console.warn(`PDF not found: ${filename}`);
       alert(`PDF "${filename}" not found in course materials.`);
     }
   };
 
-  // Parse PDF references from message content and make them clickable
   const renderMessageContent = (content) => {
-    // Match pattern: [Reference: "filename" - Page X]
     const pdfRefRegex = /\[Reference: "([^"]+)" - Page (\d+)\]/g;
     const parts = [];
     let lastIndex = 0;
     let match;
 
     while ((match = pdfRefRegex.exec(content)) !== null) {
-      // Add text before the match
       if (match.index > lastIndex) {
         parts.push({
           type: 'text',
@@ -93,7 +95,6 @@ export default function ChatInterface() {
         });
       }
 
-      // Add the PDF reference as a clickable element
       const [fullMatch, filename, page] = match;
       parts.push({
         type: 'pdf_ref',
@@ -105,7 +106,6 @@ export default function ChatInterface() {
       lastIndex = match.index + fullMatch.length;
     }
 
-    // Add remaining text
     if (lastIndex < content.length) {
       parts.push({
         type: 'text',
@@ -162,7 +162,6 @@ export default function ChatInterface() {
     setLoading(true);
     setError('');
 
-    // Add user message to UI immediately
     const tempUserMsg = {
       role: 'user',
       content: userMessage,
@@ -171,16 +170,13 @@ export default function ChatInterface() {
     setMessages(prev => [...prev, tempUserMsg]);
 
     try {
-      // Prepare conversation history for API
       const conversationHistory = messages.map(msg => ({
         role: msg.role,
         content: msg.content,
       }));
 
-      // Send message to API
       const response = await chatAPI.sendMessage(courseId, userMessage, conversationHistory);
 
-      // Add assistant response to UI
       const assistantMsg = {
         role: 'assistant',
         content: response.response,
@@ -188,15 +184,12 @@ export default function ChatInterface() {
       };
       setMessages(prev => [...prev, assistantMsg]);
 
-      // Show relevant materials if any
       if (response.relevant_materials && response.relevant_materials.length > 0) {
         console.log('Referenced materials:', response.relevant_materials);
       }
     } catch (err) {
       setError(err.message || 'Failed to send message');
-      // Remove the temporary user message on error
       setMessages(prev => prev.slice(0, -1));
-      // Restore input
       setInputMessage(userMessage);
     } finally {
       setLoading(false);
@@ -225,29 +218,31 @@ export default function ChatInterface() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      {/* Full-width Header */}
+      <header className="bg-white border-b border-gray-200 flex-shrink-0">
+        <div className="px-6 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex-1">
+            <div className="flex items-center space-x-4">
               <Link
                 to="/dashboard"
                 className="text-sm text-primary-600 hover:text-primary-700 font-medium"
               >
-                ← Back to Dashboard
+                ← Back
               </Link>
-              <h1 className="text-2xl font-bold text-gray-900 mt-1">
-                {course?.course_name || 'Loading...'}
-              </h1>
-              {course?.profiles && (
-                <p className="text-sm text-gray-600">
-                  Instructor: {course.profiles.full_name}
-                </p>
-              )}
+              <div className="border-l border-gray-300 pl-4">
+                <h1 className="text-lg font-bold text-gray-900">
+                  {course?.course_name || 'Loading...'}
+                </h1>
+                {course?.profiles && (
+                  <p className="text-xs text-gray-600">
+                    Instructor: {course.profiles.full_name}
+                  </p>
+                )}
+              </div>
             </div>
             <button
               onClick={handleClearHistory}
-              className="px-4 py-2 text-sm text-red-600 hover:text-red-700 font-medium"
+              className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 font-medium"
             >
               Clear History
             </button>
@@ -255,121 +250,163 @@ export default function ChatInterface() {
         </div>
       </header>
 
-      {/* Two-column layout: Chat on left, PDF viewer on right */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* Chat Column */}
-        <div className="flex-1 flex flex-col border-r border-gray-200">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-            {loadingHistory ? (
-              <div className="text-center py-8">
-                <p className="text-gray-600">Loading conversation...</p>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="inline-block p-6 bg-white rounded-lg shadow-md">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    Welcome to your AI MATLAB Tutor!
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    Ask me anything about MATLAB and I'll guide you through learning step-by-step.
-                  </p>
-                  <div className="text-left space-y-2">
-                    <p className="text-sm text-gray-700 font-medium">Try asking:</p>
-                    <ul className="text-sm text-gray-600 space-y-1">
-                      <li>• "How do I create a matrix in MATLAB?"</li>
-                      <li>• "What's the difference between a row and column vector?"</li>
-                      <li>• "Help me understand loops in MATLAB"</li>
-                    </ul>
+      {/* Main content with resizable panels */}
+      <div className="flex-1 overflow-hidden">
+        <PanelGroup direction="horizontal">
+          {/* Chat Panel */}
+          <Panel defaultSize={50} minSize={20} collapsible={true} onCollapse={setLeftCollapsed}>
+            <div className="h-full flex flex-col bg-white">
+              {/* Chat messages */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {loadingHistory ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600">Loading conversation...</p>
                   </div>
-                </div>
-              </div>
-            ) : (
-              messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-3xl rounded-lg px-4 py-3 ${
-                      msg.role === 'user'
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-white text-gray-900 shadow-md'
-                    }`}
-                  >
-                    <div className="flex items-start space-x-2">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <span className="text-xs font-medium opacity-75">
-                            {msg.role === 'user' ? profile?.full_name || 'You' : 'AI Tutor'}
-                          </span>
-                          <span className="text-xs opacity-50">
-                            {formatTime(msg.created_at)}
-                          </span>
-                        </div>
-                        {renderMessageContent(msg.content)}
+                ) : messages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="max-w-md text-center p-8 bg-gray-50 rounded-lg">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        Welcome to your AI MATLAB Tutor!
+                      </h3>
+                      <p className="text-gray-600 mb-4 text-sm">
+                        Ask me anything about MATLAB and I'll guide you through learning step-by-step.
+                      </p>
+                      <div className="text-left space-y-2">
+                        <p className="text-sm text-gray-700 font-medium">Try asking:</p>
+                        <ul className="text-sm text-gray-600 space-y-1">
+                          <li>• "How do I create a matrix in MATLAB?"</li>
+                          <li>• "Help me understand loops in MATLAB"</li>
+                          <li>• "What's the difference between a row and column vector?"</li>
+                        </ul>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-
-            {loading && (
-              <div className="flex justify-start">
-                <div className="max-w-3xl rounded-lg px-4 py-3 bg-white shadow-md">
-                  <div className="flex items-center space-x-2">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+                ) : (
+                  messages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-3xl rounded-lg px-4 py-3 ${
+                          msg.role === 'user'
+                            ? 'bg-primary-600 text-white'
+                            : 'bg-gray-100 text-gray-900'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-2">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="text-xs font-medium opacity-75">
+                                {msg.role === 'user' ? profile?.full_name || 'You' : 'AI Tutor'}
+                              </span>
+                              <span className="text-xs opacity-50">
+                                {formatTime(msg.created_at)}
+                              </span>
+                            </div>
+                            {renderMessageContent(msg.content)}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-sm text-gray-600">AI Tutor is thinking...</span>
+                  ))
+                )}
+
+                {loading && (
+                  <div className="flex justify-start">
+                    <div className="max-w-3xl rounded-lg px-4 py-3 bg-gray-100">
+                      <div className="flex items-center space-x-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+                        </div>
+                        <span className="text-sm text-gray-600">AI Tutor is thinking...</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                <div ref={messagesEndRef} />
               </div>
-            )}
 
-            <div ref={messagesEndRef} />
-          </div>
+              {/* Error Message */}
+              {error && (
+                <div className="mx-6 mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
 
-          {/* Error Message */}
-          {error && (
-            <div className="mx-4 sm:mx-6 lg:mx-8 mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-              {error}
+              {/* Input Area */}
+              <div className="flex-shrink-0 p-4 border-t border-gray-200">
+                <form onSubmit={handleSendMessage} className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    disabled={loading}
+                    placeholder="Ask your MATLAB question..."
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading || !inputMessage.trim()}
+                    className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 font-medium"
+                  >
+                    Send
+                  </button>
+                </form>
+              </div>
             </div>
-          )}
+          </Panel>
 
-          {/* Input Area */}
-          <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 py-4">
-            <form onSubmit={handleSendMessage} className="flex space-x-2">
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                disabled={loading}
-                placeholder="Ask your MATLAB question..."
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              />
+          {/* Resize Handle */}
+          <PanelResizeHandle className="w-2 bg-gray-200 hover:bg-primary-500 transition-colors cursor-col-resize" />
+
+          {/* Editor/PDF Panel */}
+          <Panel defaultSize={50} minSize={20} collapsible={true} onCollapse={setRightCollapsed}>
+            <div className="h-full flex flex-col bg-white border-l border-gray-200">
+              <div className="flex-shrink-0 px-4 py-2 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-sm font-semibold text-gray-700">MATLAB Editor</h3>
+                <p className="text-xs text-gray-500">Write and test your code here</p>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <MatlabEditor
+                  value={editorCode}
+                  onChange={(value) => setEditorCode(value || '')}
+                />
+              </div>
+            </div>
+          </Panel>
+        </PanelGroup>
+      </div>
+
+      {/* PDF Overlay */}
+      {showPdfOverlay && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-5xl h-5/6 flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">
+                {selectedPdf?.filename} - Page {selectedPage}
+              </h2>
               <button
-                type="submit"
-                disabled={loading || !inputMessage.trim()}
-                className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                onClick={() => setShowPdfOverlay(false)}
+                className="text-gray-500 hover:text-gray-700 transition-colors"
               >
-                Send
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
-            </form>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <PDFViewer
+                pdfUrl={selectedPdf?.file_url}
+                initialPage={selectedPage}
+              />
+            </div>
           </div>
         </div>
-
-        {/* PDF Viewer Column */}
-        <div className="w-1/2 flex flex-col bg-white">
-          <PDFViewer
-            pdfUrl={selectedPdf?.file_url}
-            initialPage={selectedPage}
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 }
