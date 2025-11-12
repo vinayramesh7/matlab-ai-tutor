@@ -366,21 +366,35 @@ export default function ChatInterface() {
 
               {/* Input Area */}
               <div className="flex-shrink-0 p-4 border-t border-gray-200 bg-gray-100">
-                <form onSubmit={handleSendMessage} className="flex space-x-2">
+                <form onSubmit={handleSendMessage} className="relative">
                   <input
                     type="text"
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     disabled={loading}
                     placeholder="Ask your MATLAB question..."
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50"
+                    className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 shadow-sm"
                   />
                   <button
                     type="submit"
                     disabled={loading || !inputMessage.trim()}
-                    className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 font-medium"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Send message"
                   >
-                    Send
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                      />
+                    </svg>
                   </button>
                 </form>
               </div>
