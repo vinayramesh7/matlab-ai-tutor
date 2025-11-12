@@ -1,41 +1,57 @@
 import pdfParse from 'pdf-parse-fork';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
-
-/**
- * Extract text from PDF page by page using pdf.js
- * @param {Buffer} pdfBuffer - PDF file buffer
- * @returns {Promise<Array>} - Array of {pageNumber, text} objects
- */
-async function extractPageByPage(pdfBuffer) {
-  const data = new Uint8Array(pdfBuffer);
-  const loadingTask = pdfjsLib.getDocument({ data, useSystemFonts: true });
-  const pdfDoc = await loadingTask.promise;
-
-  const pages = [];
-
-  for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-    const page = await pdfDoc.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    const text = textContent.items.map(item => item.str).join(' ');
-    pages.push({ pageNumber: pageNum, text });
-  }
-
-  return pages;
-}
 
 /**
  * Extract and chunk text from PDF buffer with accurate page numbers
- * @param {Buffer} pdfBuffer - PDF file buffer
- * @param {string} filename - Name of the PDF file
- * @returns {Promise<Array>} - Array of text chunks with metadata
+ * Uses pdf-parse with custom page rendering to get actual pages
  */
 export async function extractAndChunkPDF(pdfBuffer, filename) {
   try {
     console.log(`📄 Extracting PDF: ${filename}`);
 
-    // Extract text page by page for accurate page numbers
-    const pages = await extractPageByPage(pdfBuffer);
-    console.log(`📄 PDF has ${pages.length} pages`);
+    // Custom render function to extract page-by-page
+    const options = {
+      pagerender: function(pageData) {
+        return pageData.getTextContent().then(function(textContent) {
+          return textContent.items.map(item => item.str).join(' ');
+        });
+      }
+    };
+
+    const data = await pdfParse(pdfBuffer, options);
+    const totalPages = data.numpages;
+
+    console.log(`📄 PDF has ${totalPages} pages`);
+
+    // Now we need to re-parse to get per-page text
+    // Since pdf-parse doesn't give us per-page in one go, we'll use a different approach
+    // Let's parse multiple times, once per page
+    const pages = [];
+
+    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+      try {
+        const pageOptions = {
+          max: pageNum,
+          pagerender: options.pagerender
+        };
+
+        const pageData = await pdfParse(pdfBuffer, pageOptions);
+        // This gives us text up to this page
+        // We need to track what's new
+        const previousText = pageNum > 1 ? pages[pageNum - 2]?.cumulativeText || '' : '';
+        const currentText = pageData.text;
+        const newText = currentText.substring(previousText.length);
+
+        pages.push({
+          pageNumber: pageNum,
+          text: newText,
+          cumulativeText: currentText
+        });
+      } catch (err) {
+        console.warn(`⚠️ Could not extract page ${pageNum}:`, err.message);
+      }
+    }
+
+    console.log(`📄 Extracted ${pages.length} pages`);
 
     const chunks = [];
     const chunkSize = 500;
@@ -63,7 +79,7 @@ export async function extractAndChunkPDF(pdfBuffer, filename) {
 
     console.log(`✅ Extracted ${chunks.length} chunks from ${pages.length} pages`);
 
-    // Log page distribution to verify
+    // Log page distribution
     const pageDistribution = {};
     chunks.forEach(chunk => {
       pageDistribution[chunk.page] = (pageDistribution[chunk.page] || 0) + 1;
