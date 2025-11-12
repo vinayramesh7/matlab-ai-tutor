@@ -196,6 +196,12 @@ export default function ChatInterface() {
     }
   };
 
+  const handleStarterPromptClick = (prompt) => {
+    setInputMessage(prompt);
+    // Optionally auto-submit
+    // handleSendMessage({ preventDefault: () => {} });
+  };
+
   const handleClearHistory = async () => {
     if (!confirm('Are you sure you want to clear the conversation history?')) {
       return;
@@ -273,10 +279,31 @@ export default function ChatInterface() {
                       </p>
                       <div className="text-left space-y-2">
                         <p className="text-sm text-gray-700 font-medium">Try asking:</p>
-                        <ul className="text-sm text-gray-600 space-y-1">
-                          <li>• "How do I create a matrix in MATLAB?"</li>
-                          <li>• "Help me understand loops in MATLAB"</li>
-                          <li>• "What's the difference between a row and column vector?"</li>
+                        <ul className="text-sm text-gray-600 space-y-2">
+                          <li>
+                            <button
+                              onClick={() => handleStarterPromptClick("How do I create a matrix in MATLAB?")}
+                              className="text-left w-full px-3 py-2 rounded hover:bg-gray-200 transition-colors text-primary-600 hover:text-primary-700"
+                            >
+                              • "How do I create a matrix in MATLAB?"
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              onClick={() => handleStarterPromptClick("Help me understand loops in MATLAB")}
+                              className="text-left w-full px-3 py-2 rounded hover:bg-gray-200 transition-colors text-primary-600 hover:text-primary-700"
+                            >
+                              • "Help me understand loops in MATLAB"
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              onClick={() => handleStarterPromptClick("What's the difference between a row and column vector?")}
+                              className="text-left w-full px-3 py-2 rounded hover:bg-gray-200 transition-colors text-primary-600 hover:text-primary-700"
+                            >
+                              • "What's the difference between a row and column vector?"
+                            </button>
+                          </li>
                         </ul>
                       </div>
                     </div>
@@ -285,12 +312,12 @@ export default function ChatInterface() {
                   messages.map((msg, idx) => (
                     <div
                       key={idx}
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      className="flex justify-start"
                     >
                       <div
                         className={`max-w-3xl rounded-lg px-4 py-3 ${
                           msg.role === 'user'
-                            ? 'bg-primary-600 text-white'
+                            ? 'bg-[#deefff] text-gray-900'
                             : 'bg-gray-100 text-gray-900'
                         }`}
                       >
@@ -338,22 +365,36 @@ export default function ChatInterface() {
               )}
 
               {/* Input Area */}
-              <div className="flex-shrink-0 p-4 border-t border-gray-200">
-                <form onSubmit={handleSendMessage} className="flex space-x-2">
+              <div className="flex-shrink-0 p-4 border-t border-gray-200 bg-gray-100">
+                <form onSubmit={handleSendMessage} className="relative">
                   <input
                     type="text"
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     disabled={loading}
                     placeholder="Ask your MATLAB question..."
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50"
+                    className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 shadow-sm"
                   />
                   <button
                     type="submit"
                     disabled={loading || !inputMessage.trim()}
-                    className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 font-medium"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Send message"
                   >
-                    Send
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                      />
+                    </svg>
                   </button>
                 </form>
               </div>
