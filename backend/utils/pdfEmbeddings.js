@@ -1,4 +1,27 @@
 import pdfParse from 'pdf-parse-fork';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
+
+/**
+ * Extract text from PDF page by page using pdf.js
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @returns {Promise<Array>} - Array of {pageNumber, text} objects
+ */
+async function extractPageByPage(pdfBuffer) {
+  const data = new Uint8Array(pdfBuffer);
+  const loadingTask = pdfjsLib.getDocument({ data, useSystemFonts: true });
+  const pdfDoc = await loadingTask.promise;
+
+  const pages = [];
+
+  for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+    const page = await pdfDoc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const text = textContent.items.map(item => item.str).join(' ');
+    pages.push({ pageNumber: pageNum, text });
+  }
+
+  return pages;
+}
 
 /**
  * Extract and chunk text from PDF buffer with accurate page numbers
@@ -8,52 +31,44 @@ import pdfParse from 'pdf-parse-fork';
  */
 export async function extractAndChunkPDF(pdfBuffer, filename) {
   try {
-    // First, get the full PDF data to know total pages
-    const data = await pdfParse(pdfBuffer);
-    const totalPages = data.numpages;
+    console.log(`📄 Extracting PDF: ${filename}`);
 
-    console.log(`📄 PDF has ${totalPages} pages`);
+    // Extract text page by page for accurate page numbers
+    const pages = await extractPageByPage(pdfBuffer);
+    console.log(`📄 PDF has ${pages.length} pages`);
 
     const chunks = [];
     const chunkSize = 500;
     const overlap = 100;
 
-    // Extract text page by page using pdf-parse
-    // We'll re-parse with a custom page renderer
-    const pdfData = await pdfParse(pdfBuffer);
-
-    // Split by form feeds or newlines with page markers
-    // pdf-parse concatenates all pages, so we need to estimate based on content length
-    const avgCharsPerPage = Math.ceil(pdfData.text.length / totalPages);
-
-    // Better approach: process the full text but estimate pages more accurately
-    const fullText = pdfData.text;
-
-    for (let i = 0; i < fullText.length; i += chunkSize - overlap) {
-      const chunk = fullText.slice(i, i + chunkSize);
-      if (chunk.trim().length > 50) {
-        // Estimate page number based on character position
-        // More accurate than before: use average chars per page
-        const estimatedPage = Math.floor(i / avgCharsPerPage) + 1;
-        const page = Math.min(estimatedPage, totalPages); // Don't exceed total pages
-
-        chunks.push({
-          content: chunk.trim(),
-          filename: filename,
-          page: page,
-          start_char: i
-        });
+    // Process each page
+    pages.forEach(({ pageNumber, text }) => {
+      if (!text || text.trim().length === 0) {
+        return; // Skip empty pages
       }
-    }
 
-    console.log(`✅ Extracted ${chunks.length} chunks from ${totalPages} pages`);
+      // Chunk the page text
+      for (let i = 0; i < text.length; i += chunkSize - overlap) {
+        const chunk = text.slice(i, i + chunkSize);
+        if (chunk.trim().length > 50) {
+          chunks.push({
+            content: chunk.trim(),
+            filename: filename,
+            page: pageNumber,
+            start_char: i
+          });
+        }
+      }
+    });
+
+    console.log(`✅ Extracted ${chunks.length} chunks from ${pages.length} pages`);
 
     // Log page distribution to verify
     const pageDistribution = {};
     chunks.forEach(chunk => {
       pageDistribution[chunk.page] = (pageDistribution[chunk.page] || 0) + 1;
     });
-    console.log(`📊 Page distribution:`, Object.keys(pageDistribution).length, 'unique pages');
+    console.log(`📊 Page distribution: ${Object.keys(pageDistribution).length} unique pages covered`);
 
     return chunks;
   } catch (error) {
