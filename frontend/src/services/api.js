@@ -166,11 +166,6 @@ export const chatAPI = {
   clearHistory: (courseId) => apiRequest(`/chat/history/${courseId}`, {
     method: 'DELETE',
   }),
-
-  executeCode: (code) => apiRequest('/chat/execute', {
-    method: 'POST',
-    body: JSON.stringify({ code }),
-  }),
 };
 
 // PDF API
