@@ -5,6 +5,7 @@ import courseRoutes from './routes/courseRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import pdfRoutes from './routes/pdfRoutes.js';
 import linkRoutes from './routes/linkRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/pdfs', pdfRoutes);
 app.use('/api/links', linkRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

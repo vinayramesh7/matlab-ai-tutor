@@ -6,6 +6,7 @@ import ProfessorDashboard from './pages/ProfessorDashboard';
 import StudentDashboard from './pages/StudentDashboard';
 import CourseCreation from './pages/CourseCreation';
 import ChatInterface from './pages/ChatInterface';
+import AnalyticsDashboard from './pages/AnalyticsDashboard';
 
 // Protected route wrapper
 const ProtectedRoute = ({ children, requireProfessor = false }) => {
@@ -106,6 +107,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ChatInterface />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics/:courseId"
+        element={
+          <ProtectedRoute requireProfessor>
+            <AnalyticsDashboard />
           </ProtectedRoute>
         }
       />

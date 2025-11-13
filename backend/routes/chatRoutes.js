@@ -2,8 +2,33 @@ import express from 'express';
 import { supabase, getAuthUser } from '../config/supabase.js';
 import { generateTutorResponse } from '../ai/tutorAgent.js';
 import { getCoursePDFChunks, searchRelevantChunks } from '../utils/pdfEmbeddings.js';
+import { extractTopic, calculateMasteryLevel } from '../utils/topicExtraction.js';
 
 const router = express.Router();
+
+/**
+ * Track analytics event for a student question (simple activity tracking only)
+ */
+async function trackAnalyticsEvent(studentId, courseId, message) {
+  try {
+    // Extract topic from message (for topic heatmap only, no mastery)
+    const topic = extractTopic(message);
+
+    // Insert analytics event
+    await supabase.from('analytics_events').insert({
+      student_id: studentId,
+      course_id: courseId,
+      event_type: 'question',
+      topic: topic,
+      message_content: message
+    });
+
+    console.log(`📊 Tracked analytics: student=${studentId}, topic=${topic}`);
+  } catch (error) {
+    console.error('Error tracking analytics:', error);
+    // Don't throw - analytics should not block the main flow
+  }
+}
 
 /**
  * POST /api/chat/message - Send a message to the tutor and get a response
@@ -92,6 +117,11 @@ router.post('/message', async (req, res) => {
         content: tutorResponse
       }
     ]);
+
+    // Track analytics event (async, don't block response)
+    trackAnalyticsEvent(user.id, course_id, message).catch(err => {
+      console.error('Error tracking analytics:', err);
+    });
 
     res.json({
       response: tutorResponse,
