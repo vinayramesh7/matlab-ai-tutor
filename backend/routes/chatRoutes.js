@@ -1,11 +1,8 @@
 import express from 'express';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { supabase, getAuthUser } from '../config/supabase.js';
 import { generateTutorResponse } from '../ai/tutorAgent.js';
 import { getCoursePDFChunks, searchRelevantChunks } from '../utils/pdfEmbeddings.js';
 
-const execPromise = promisify(exec);
 const router = express.Router();
 
 /**
@@ -157,7 +154,7 @@ router.delete('/history/:course_id', async (req, res) => {
 });
 
 /**
- * POST /api/chat/execute - Execute MATLAB/Octave code
+ * POST /api/chat/execute - Execute MATLAB/Octave code using Judge0 API
  */
 router.post('/execute', async (req, res) => {
   try {
@@ -173,52 +170,68 @@ router.post('/execute', async (req, res) => {
       return res.status(400).json({ error: 'Code too long (max 10000 characters)' });
     }
 
-    console.log('🔧 Executing MATLAB/Octave code...');
+    const rapidApiKey = process.env.RAPIDAPI_KEY;
 
-    // First check if Octave is installed
-    try {
-      await execPromise('which octave', { timeout: 1000 });
-    } catch (error) {
+    if (!rapidApiKey) {
       return res.status(503).json({
         error: true,
-        message: 'Octave is not installed on this server. Please install GNU Octave to enable code execution.\n\nOn Ubuntu/Debian: sudo apt-get install octave\nOn macOS: brew install octave\nOn Windows: Download from https://octave.org'
+        message: 'Code execution is not configured. Please add RAPIDAPI_KEY to your .env file.\n\nGet a free API key at: https://rapidapi.com/judge0-official/api/judge0-ce'
       });
     }
 
-    // Try to execute with Octave (MATLAB-compatible)
-    // Using --eval to execute code directly
-    // --quiet to suppress startup messages
-    // --no-gui to run without GUI
-    const { stdout, stderr } = await execPromise(
-      `octave --quiet --no-gui --eval "${code.replace(/"/g, '\\"')}"`,
-      {
-        timeout: 10000, // 10 second timeout
-        maxBuffer: 1024 * 1024, // 1MB max output
-      }
-    );
+    console.log('🔧 Executing MATLAB/Octave code via Judge0...');
 
-    console.log('✅ Code executed successfully');
+    // Judge0 language ID: 66 = Octave (MATLAB-compatible)
+    // Submit code for execution
+    const submissionResponse = await fetch('https://judge0-ce.p.rapidapi.com/submissions?wait=true', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-RapidAPI-Key': rapidApiKey,
+        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+      },
+      body: JSON.stringify({
+        source_code: code,
+        language_id: 66, // Octave
+        stdin: '',
+      })
+    });
+
+    if (!submissionResponse.ok) {
+      const errorText = await submissionResponse.text();
+      console.error('Judge0 API error:', errorText);
+      throw new Error(`API request failed: ${submissionResponse.statusText}`);
+    }
+
+    const result = await submissionResponse.json();
+
+    console.log('✅ Code executed via Judge0');
+
+    // Extract output
+    const stdout = result.stdout ? Buffer.from(result.stdout, 'base64').toString('utf-8') : '';
+    const stderr = result.stderr ? Buffer.from(result.stderr, 'base64').toString('utf-8') : '';
+    const compileOutput = result.compile_output ? Buffer.from(result.compile_output, 'base64').toString('utf-8') : '';
+
+    // Check for errors
+    if (result.status.id >= 6) { // Status 6+ are errors
+      return res.json({
+        stdout: stdout,
+        stderr: stderr || compileOutput || result.status.description,
+        success: false
+      });
+    }
 
     res.json({
-      stdout: stdout || '',
-      stderr: stderr || '',
+      stdout: stdout,
+      stderr: stderr,
       success: true
     });
   } catch (error) {
     console.error('❌ Error executing code:', error);
 
-    // Handle timeout
-    if (error.killed) {
-      return res.status(408).json({
-        error: true,
-        message: 'Code execution timed out (10 second limit)'
-      });
-    }
-
-    // Handle execution errors
     res.json({
-      stdout: error.stdout || '',
-      stderr: error.stderr || error.message,
+      stdout: '',
+      stderr: error.message || 'Failed to execute code',
       success: false
     });
   }
