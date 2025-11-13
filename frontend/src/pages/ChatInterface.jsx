@@ -82,7 +82,8 @@ export default function ChatInterface() {
   };
 
   const renderMessageContent = (content) => {
-    const pdfRefRegex = /\[Reference: "([^"]+)" - Page (\d+)\]/g;
+    // Updated regex to match both single pages (Page 29) and ranges (Page 29-31)
+    const pdfRefRegex = /\[Reference: "([^"]+)" - Page ([\d\-]+)\]/g;
     const parts = [];
     let lastIndex = 0;
     let match;
@@ -95,11 +96,19 @@ export default function ChatInterface() {
         });
       }
 
-      const [fullMatch, filename, page] = match;
+      const [fullMatch, filename, pageStr] = match;
+
+      // Handle page ranges: "29-31" -> link to page 29
+      // Handle single pages: "29" -> link to page 29
+      const firstPage = pageStr.includes('-')
+        ? parseInt(pageStr.split('-')[0])
+        : parseInt(pageStr);
+
       parts.push({
         type: 'pdf_ref',
         filename,
-        page: parseInt(page),
+        page: firstPage,
+        pageDisplay: pageStr, // Keep original for display (e.g., "29-31")
         fullMatch
       });
 
@@ -128,7 +137,7 @@ export default function ChatInterface() {
                 key={idx}
                 onClick={() => handlePdfReferenceClick(part.filename, part.page)}
                 className="inline-flex items-center px-2 py-1 mx-1 text-xs font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-                title={`Click to view ${part.filename} page ${part.page}`}
+                title={`Click to view ${part.filename} page ${part.pageDisplay || part.page}`}
               >
                 <svg
                   className="w-3 h-3 mr-1"
@@ -143,7 +152,7 @@ export default function ChatInterface() {
                     d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
                   />
                 </svg>
-                {part.filename} - Page {part.page}
+                {part.filename} - Page {part.pageDisplay || part.page}
               </button>
             );
           }
