@@ -235,3 +235,14 @@ export const linkAPI = {
     method: 'DELETE',
   }),
 };
+
+// Analytics API
+export const analyticsAPI = {
+  getCourseOverview: (courseId) => apiRequest(`/analytics/course/${courseId}/overview`),
+
+  getCourseStudents: (courseId) => apiRequest(`/analytics/course/${courseId}/students`),
+
+  getCourseTopics: (courseId) => apiRequest(`/analytics/course/${courseId}/topics`),
+
+  getStudentDetails: (studentId, courseId) => apiRequest(`/analytics/student/${studentId}/${courseId}`),
+};

@@ -130,19 +130,27 @@ export default function ProfessorDashboard() {
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="space-y-2">
                   <Link
-                    to={`/courses/${course.id}/edit`}
-                    className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-center text-sm font-medium"
+                    to={`/analytics/${course.id}`}
+                    className="block w-full px-3 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 transition-colors text-center text-sm font-medium"
                   >
-                    Edit
+                    📊 Analytics
                   </Link>
-                  <button
-                    onClick={() => handleDeleteCourse(course.id)}
-                    className="flex-1 px-3 py-2 bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors text-sm font-medium"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex gap-2">
+                    <Link
+                      to={`/courses/${course.id}/edit`}
+                      className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-center text-sm font-medium"
+                    >
+                      Edit
+                    </Link>
+                    <button
+                      onClick={() => handleDeleteCourse(course.id)}
+                      className="flex-1 px-3 py-2 bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors text-sm font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

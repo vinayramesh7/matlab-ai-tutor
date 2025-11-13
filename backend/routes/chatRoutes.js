@@ -2,8 +2,73 @@ import express from 'express';
 import { supabase, getAuthUser } from '../config/supabase.js';
 import { generateTutorResponse } from '../ai/tutorAgent.js';
 import { getCoursePDFChunks, searchRelevantChunks } from '../utils/pdfEmbeddings.js';
+import { extractTopic, calculateMasteryLevel } from '../utils/topicExtraction.js';
 
 const router = express.Router();
+
+/**
+ * Track analytics event for a student question
+ */
+async function trackAnalyticsEvent(studentId, courseId, message) {
+  try {
+    // Extract topic from message
+    const topic = extractTopic(message);
+
+    // Insert analytics event
+    await supabase.from('analytics_events').insert({
+      student_id: studentId,
+      course_id: courseId,
+      event_type: 'question',
+      topic: topic,
+      message_content: message
+    });
+
+    // Get current mastery for this topic
+    const { data: existingMastery } = await supabase
+      .from('student_mastery')
+      .select('*')
+      .eq('student_id', studentId)
+      .eq('course_id', courseId)
+      .eq('concept', topic)
+      .single();
+
+    if (existingMastery) {
+      // Update existing mastery
+      const newMasteryLevel = calculateMasteryLevel(
+        existingMastery.questions_asked + 1,
+        existingMastery.last_practiced,
+        existingMastery.mastery_level
+      );
+
+      await supabase
+        .from('student_mastery')
+        .update({
+          mastery_level: newMasteryLevel,
+          questions_asked: existingMastery.questions_asked + 1,
+          last_practiced: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingMastery.id);
+    } else {
+      // Create new mastery record
+      const initialMastery = calculateMasteryLevel(1, null, 0);
+
+      await supabase.from('student_mastery').insert({
+        student_id: studentId,
+        course_id: courseId,
+        concept: topic,
+        mastery_level: initialMastery,
+        questions_asked: 1,
+        last_practiced: new Date().toISOString()
+      });
+    }
+
+    console.log(`📊 Tracked analytics: student=${studentId}, topic=${topic}`);
+  } catch (error) {
+    console.error('Error tracking analytics:', error);
+    // Don't throw - analytics should not block the main flow
+  }
+}
 
 /**
  * POST /api/chat/message - Send a message to the tutor and get a response
@@ -92,6 +157,11 @@ router.post('/message', async (req, res) => {
         content: tutorResponse
       }
     ]);
+
+    // Track analytics event (async, don't block response)
+    trackAnalyticsEvent(user.id, course_id, message).catch(err => {
+      console.error('Error tracking analytics:', err);
+    });
 
     res.json({
       response: tutorResponse,
