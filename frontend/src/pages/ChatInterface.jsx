@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { courseAPI, chatAPI, pdfAPI } from '../services/api';
 import { useAuth } from '../utils/AuthContext';
 import PDFViewer from '../components/PDFViewer';
@@ -82,13 +84,14 @@ export default function ChatInterface() {
   };
 
   const renderMessageContent = (content) => {
-    // Updated regex to match both single pages (Page 29) and ranges (Page 29-31)
-    const pdfRefRegex = /\[Reference: "([^"]+)" - Page ([\d\-]+)\]/g;
+    // First, parse code blocks
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
     const parts = [];
     let lastIndex = 0;
     let match;
 
-    while ((match = pdfRefRegex.exec(content)) !== null) {
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      // Add text before code block
       if (match.index > lastIndex) {
         parts.push({
           type: 'text',
@@ -96,10 +99,77 @@ export default function ChatInterface() {
         });
       }
 
+      // Add code block
+      const language = match[1] || 'text';
+      const code = match[2].trim();
+      parts.push({
+        type: 'code',
+        language,
+        code
+      });
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push({
+        type: 'text',
+        content: content.substring(lastIndex)
+      });
+    }
+
+    // If no code blocks, treat entire content as text
+    if (parts.length === 0) {
+      parts.push({ type: 'text', content });
+    }
+
+    // Now render parts, parsing PDF references in text parts
+    return (
+      <div className="space-y-2">
+        {parts.map((part, idx) => {
+          if (part.type === 'code') {
+            return (
+              <SyntaxHighlighter
+                key={idx}
+                language={part.language}
+                style={vscDarkPlus}
+                customStyle={{
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  fontSize: '0.875rem',
+                  margin: '0.5rem 0'
+                }}
+              >
+                {part.code}
+              </SyntaxHighlighter>
+            );
+          } else {
+            // Parse PDF references in text
+            return <span key={idx}>{renderTextWithPdfRefs(part.content)}</span>;
+          }
+        })}
+      </div>
+    );
+  };
+
+  const renderTextWithPdfRefs = (text) => {
+    const pdfRefRegex = /\[Reference: "([^"]+)" - Page ([\d\-]+)\]/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = pdfRefRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({
+          type: 'text',
+          content: text.substring(lastIndex, match.index)
+        });
+      }
+
       const [fullMatch, filename, pageStr] = match;
 
       // Handle page ranges: "29-31" -> link to page 29
-      // Handle single pages: "29" -> link to page 29
       const firstPage = pageStr.includes('-')
         ? parseInt(pageStr.split('-')[0])
         : parseInt(pageStr);
@@ -108,22 +178,22 @@ export default function ChatInterface() {
         type: 'pdf_ref',
         filename,
         page: firstPage,
-        pageDisplay: pageStr, // Keep original for display (e.g., "29-31")
+        pageDisplay: pageStr,
         fullMatch
       });
 
       lastIndex = match.index + fullMatch.length;
     }
 
-    if (lastIndex < content.length) {
+    if (lastIndex < text.length) {
       parts.push({
         type: 'text',
-        content: content.substring(lastIndex)
+        content: text.substring(lastIndex)
       });
     }
 
     if (parts.length === 0) {
-      return <span className="whitespace-pre-wrap break-words">{content}</span>;
+      return <span className="whitespace-pre-wrap break-words">{text}</span>;
     }
 
     return (
@@ -205,16 +275,50 @@ export default function ChatInterface() {
     }
   };
 
-  const handleStarterPromptClick = (prompt) => {
-    setInputMessage(prompt);
-    // Optionally auto-submit
-    // handleSendMessage({ preventDefault: () => {} });
+  const handleStarterPromptClick = async (prompt) => {
+    if (loading) return;
+
+    setInputMessage('');
+    setLoading(true);
+    setError('');
+
+    const tempUserMsg = {
+      role: 'user',
+      content: prompt,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, tempUserMsg]);
+
+    try {
+      const conversationHistory = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      const response = await chatAPI.sendMessage(courseId, prompt, conversationHistory);
+
+      const assistantMsg = {
+        role: 'assistant',
+        content: response.response,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+
+      if (response.relevant_materials && response.relevant_materials.length > 0) {
+        console.log('Referenced materials:', response.relevant_materials);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to send message');
+      setMessages(prev => prev.slice(0, -1));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmitCode = async () => {
     if (!editorCode.trim() || loading) return;
 
-    const codeSubmission = `[STUDENT CODE SUBMISSION]\n\`\`\`matlab\n${editorCode.trim()}\n\`\`\`\n\nI've written the code above in the MATLAB editor. Can you review it and provide feedback?`;
+    const codeSubmission = `Can you review my code and provide feedback?\n\n\`\`\`matlab\n${editorCode.trim()}\n\`\`\``;
 
     setLoading(true);
     setError('');
@@ -428,7 +532,7 @@ export default function ChatInterface() {
                   <button
                     type="submit"
                     disabled={loading || !inputMessage.trim()}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-primary-600 hover:text-primary-700 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Send message"
                   >
                     <svg
@@ -442,7 +546,7 @@ export default function ChatInterface() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                        d="M14 5l7 7m0 0l-7 7m7-7H3"
                       />
                     </svg>
                   </button>
@@ -466,7 +570,7 @@ export default function ChatInterface() {
                   onClick={handleSubmitCode}
                   disabled={loading || !editorCode.trim()}
                   className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                  title="Submit your code for AI review"
+                  title="Review your code with AI"
                 >
                   <svg
                     className="w-4 h-4"
@@ -481,7 +585,7 @@ export default function ChatInterface() {
                       d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  <span>Submit Code</span>
+                  <span>Review Code</span>
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
