@@ -3,9 +3,9 @@
 
 -- Track student questions and activity
 CREATE TABLE IF NOT EXISTS analytics_events (
-  id SERIAL PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   student_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+  course_id UUID REFERENCES courses(id) ON DELETE CASCADE,
   event_type VARCHAR(50) NOT NULL, -- 'question'
   topic VARCHAR(100), -- extracted topic (loops, matrices, etc.) for heatmap
   message_content TEXT, -- the actual question
