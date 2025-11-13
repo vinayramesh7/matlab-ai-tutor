@@ -153,4 +153,88 @@ router.delete('/history/:course_id', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/chat/execute - Execute MATLAB/Octave code using Judge0 API
+ */
+router.post('/execute', async (req, res) => {
+  try {
+    await getAuthUser(req); // Ensure user is authenticated
+    const { code } = req.body;
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: 'Code is required' });
+    }
+
+    // Security: Limit code length
+    if (code.length > 10000) {
+      return res.status(400).json({ error: 'Code too long (max 10000 characters)' });
+    }
+
+    const rapidApiKey = process.env.RAPIDAPI_KEY;
+
+    if (!rapidApiKey) {
+      return res.status(503).json({
+        error: true,
+        message: 'Code execution is not configured. Please add RAPIDAPI_KEY to your .env file.\n\nGet a free API key at: https://rapidapi.com/judge0-official/api/judge0-ce'
+      });
+    }
+
+    console.log('🔧 Executing MATLAB/Octave code via Judge0...');
+
+    // Judge0 language ID: 66 = Octave (MATLAB-compatible)
+    // Submit code for execution
+    const submissionResponse = await fetch('https://judge0-ce.p.rapidapi.com/submissions?wait=true', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-RapidAPI-Key': rapidApiKey,
+        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+      },
+      body: JSON.stringify({
+        source_code: code,
+        language_id: 66, // Octave
+        stdin: '',
+      })
+    });
+
+    if (!submissionResponse.ok) {
+      const errorText = await submissionResponse.text();
+      console.error('Judge0 API error:', errorText);
+      throw new Error(`API request failed: ${submissionResponse.statusText}`);
+    }
+
+    const result = await submissionResponse.json();
+
+    console.log('✅ Code executed via Judge0');
+
+    // Extract output
+    const stdout = result.stdout ? Buffer.from(result.stdout, 'base64').toString('utf-8') : '';
+    const stderr = result.stderr ? Buffer.from(result.stderr, 'base64').toString('utf-8') : '';
+    const compileOutput = result.compile_output ? Buffer.from(result.compile_output, 'base64').toString('utf-8') : '';
+
+    // Check for errors
+    if (result.status.id >= 6) { // Status 6+ are errors
+      return res.json({
+        stdout: stdout,
+        stderr: stderr || compileOutput || result.status.description,
+        success: false
+      });
+    }
+
+    res.json({
+      stdout: stdout,
+      stderr: stderr,
+      success: true
+    });
+  } catch (error) {
+    console.error('❌ Error executing code:', error);
+
+    res.json({
+      stdout: '',
+      stderr: error.message || 'Failed to execute code',
+      success: false
+    });
+  }
+});
+
 export default router;
