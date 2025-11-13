@@ -98,24 +98,29 @@ router.get('/course/:courseId/students', async (req, res) => {
       return res.status(404).json({ error: 'Course not found or access denied' });
     }
 
-    // Get all enrolled students
-    const { data: enrollments } = await supabase
-      .from('enrollments')
-      .select(`
-        student_id,
-        profiles!enrollments_student_id_fkey(id, full_name, email)
-      `)
-      .eq('course_id', courseId);
+    // Get all students who have asked questions in this course
+    const { data: analyticsEvents } = await supabase
+      .from('analytics_events')
+      .select('student_id')
+      .eq('course_id', courseId)
+      .eq('event_type', 'question');
 
-    if (!enrollments) {
+    if (!analyticsEvents || analyticsEvents.length === 0) {
       return res.json([]);
     }
 
+    // Get unique student IDs
+    const uniqueStudentIds = [...new Set(analyticsEvents.map(e => e.student_id))];
+
     // Get analytics for each student
     const studentsWithAnalytics = await Promise.all(
-      enrollments.map(async (enrollment) => {
-        const studentId = enrollment.student_id;
-        const profile = enrollment.profiles;
+      uniqueStudentIds.map(async (studentId) => {
+        // Get student profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('id', studentId)
+          .single();
 
         // Get question count
         const { data: questions } = await supabase
