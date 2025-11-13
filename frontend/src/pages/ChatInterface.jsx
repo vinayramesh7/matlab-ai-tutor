@@ -24,6 +24,8 @@ export default function ChatInterface() {
   const [editorCode, setEditorCode] = useState('% Write your MATLAB code here\n\n');
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [executionOutput, setExecutionOutput] = useState(null);
+  const [isExecuting, setIsExecuting] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -315,6 +317,25 @@ export default function ChatInterface() {
     }
   };
 
+  const handleRunCode = async () => {
+    if (!editorCode.trim() || isExecuting) return;
+
+    setIsExecuting(true);
+    setExecutionOutput(null);
+
+    try {
+      const result = await chatAPI.executeCode(editorCode.trim());
+      setExecutionOutput(result);
+    } catch (err) {
+      setExecutionOutput({
+        error: true,
+        message: err.message || 'Failed to execute code'
+      });
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   const handleSubmitCode = async () => {
     if (!editorCode.trim() || loading) return;
 
@@ -566,33 +587,103 @@ export default function ChatInterface() {
                   <h3 className="text-sm font-semibold text-gray-700">MATLAB Editor</h3>
                   <p className="text-xs text-gray-500">Write and test your code here</p>
                 </div>
-                <button
-                  onClick={handleSubmitCode}
-                  disabled={loading || !editorCode.trim()}
-                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                  title="Review your code with AI"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleRunCode}
+                    disabled={isExecuting || !editorCode.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                    title="Run your MATLAB code"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span>Review Code</span>
-                </button>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span>{isExecuting ? 'Running...' : 'Run'}</span>
+                  </button>
+                  <button
+                    onClick={handleSubmitCode}
+                    disabled={loading || !editorCode.trim()}
+                    className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                    title="Review your code with AI"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span>Review Code</span>
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 overflow-hidden">
-                <MatlabEditor
-                  value={editorCode}
-                  onChange={(value) => setEditorCode(value || '')}
-                />
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-hidden">
+                  <MatlabEditor
+                    value={editorCode}
+                    onChange={(value) => setEditorCode(value || '')}
+                  />
+                </div>
+                {executionOutput && (
+                  <div className="flex-shrink-0 border-t border-gray-200 bg-gray-900 text-gray-100 p-4 overflow-auto max-h-48">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-semibold text-gray-400 uppercase">Output</h4>
+                      <button
+                        onClick={() => setExecutionOutput(null)}
+                        className="text-gray-400 hover:text-gray-200 transition-colors"
+                        title="Clear output"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    {executionOutput.error ? (
+                      <pre className="text-red-400 text-sm font-mono whitespace-pre-wrap">
+                        {executionOutput.message || 'An error occurred'}
+                      </pre>
+                    ) : (
+                      <div>
+                        {executionOutput.stdout && (
+                          <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap mb-2">
+                            {executionOutput.stdout}
+                          </pre>
+                        )}
+                        {executionOutput.stderr && (
+                          <pre className="text-yellow-400 text-sm font-mono whitespace-pre-wrap">
+                            {executionOutput.stderr}
+                          </pre>
+                        )}
+                        {!executionOutput.stdout && !executionOutput.stderr && (
+                          <pre className="text-gray-400 text-sm font-mono">
+                            (No output)
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </Panel>

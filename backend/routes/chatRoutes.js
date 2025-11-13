@@ -1,8 +1,11 @@
 import express from 'express';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { supabase, getAuthUser } from '../config/supabase.js';
 import { generateTutorResponse } from '../ai/tutorAgent.js';
 import { getCoursePDFChunks, searchRelevantChunks } from '../utils/pdfEmbeddings.js';
 
+const execPromise = promisify(exec);
 const router = express.Router();
 
 /**
@@ -150,6 +153,74 @@ router.delete('/history/:course_id', async (req, res) => {
   } catch (error) {
     console.error('Error clearing conversation history:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/chat/execute - Execute MATLAB/Octave code
+ */
+router.post('/execute', async (req, res) => {
+  try {
+    await getAuthUser(req); // Ensure user is authenticated
+    const { code } = req.body;
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: 'Code is required' });
+    }
+
+    // Security: Limit code length
+    if (code.length > 10000) {
+      return res.status(400).json({ error: 'Code too long (max 10000 characters)' });
+    }
+
+    console.log('🔧 Executing MATLAB/Octave code...');
+
+    // First check if Octave is installed
+    try {
+      await execPromise('which octave', { timeout: 1000 });
+    } catch (error) {
+      return res.status(503).json({
+        error: true,
+        message: 'Octave is not installed on this server. Please install GNU Octave to enable code execution.\n\nOn Ubuntu/Debian: sudo apt-get install octave\nOn macOS: brew install octave\nOn Windows: Download from https://octave.org'
+      });
+    }
+
+    // Try to execute with Octave (MATLAB-compatible)
+    // Using --eval to execute code directly
+    // --quiet to suppress startup messages
+    // --no-gui to run without GUI
+    const { stdout, stderr } = await execPromise(
+      `octave --quiet --no-gui --eval "${code.replace(/"/g, '\\"')}"`,
+      {
+        timeout: 10000, // 10 second timeout
+        maxBuffer: 1024 * 1024, // 1MB max output
+      }
+    );
+
+    console.log('✅ Code executed successfully');
+
+    res.json({
+      stdout: stdout || '',
+      stderr: stderr || '',
+      success: true
+    });
+  } catch (error) {
+    console.error('❌ Error executing code:', error);
+
+    // Handle timeout
+    if (error.killed) {
+      return res.status(408).json({
+        error: true,
+        message: 'Code execution timed out (10 second limit)'
+      });
+    }
+
+    // Handle execution errors
+    res.json({
+      stdout: error.stdout || '',
+      stderr: error.stderr || error.message,
+      success: false
+    });
   }
 });
 
