@@ -7,11 +7,11 @@ import { extractTopic, calculateMasteryLevel } from '../utils/topicExtraction.js
 const router = express.Router();
 
 /**
- * Track analytics event for a student question
+ * Track analytics event for a student question (simple activity tracking only)
  */
 async function trackAnalyticsEvent(studentId, courseId, message) {
   try {
-    // Extract topic from message
+    // Extract topic from message (for topic heatmap only, no mastery)
     const topic = extractTopic(message);
 
     // Insert analytics event
@@ -22,46 +22,6 @@ async function trackAnalyticsEvent(studentId, courseId, message) {
       topic: topic,
       message_content: message
     });
-
-    // Get current mastery for this topic
-    const { data: existingMastery } = await supabase
-      .from('student_mastery')
-      .select('*')
-      .eq('student_id', studentId)
-      .eq('course_id', courseId)
-      .eq('concept', topic)
-      .single();
-
-    if (existingMastery) {
-      // Update existing mastery
-      const newMasteryLevel = calculateMasteryLevel(
-        existingMastery.questions_asked + 1,
-        existingMastery.last_practiced,
-        existingMastery.mastery_level
-      );
-
-      await supabase
-        .from('student_mastery')
-        .update({
-          mastery_level: newMasteryLevel,
-          questions_asked: existingMastery.questions_asked + 1,
-          last_practiced: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existingMastery.id);
-    } else {
-      // Create new mastery record
-      const initialMastery = calculateMasteryLevel(1, null, 0);
-
-      await supabase.from('student_mastery').insert({
-        student_id: studentId,
-        course_id: courseId,
-        concept: topic,
-        mastery_level: initialMastery,
-        questions_asked: 1,
-        last_practiced: new Date().toISOString()
-      });
-    }
 
     console.log(`📊 Tracked analytics: student=${studentId}, topic=${topic}`);
   } catch (error) {

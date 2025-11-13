@@ -65,23 +65,12 @@ router.get('/course/:courseId/overview', async (req, res) => {
     const uniqueActiveStudents = new Set(activeStudentIds?.map(e => e.student_id) || []);
     const activeStudents = uniqueActiveStudents.size;
 
-    // Get average mastery across all students
-    const { data: masteryData } = await supabase
-      .from('student_mastery')
-      .select('mastery_level')
-      .eq('course_id', courseId);
-
-    const avgMastery = masteryData?.length
-      ? Math.round(masteryData.reduce((sum, m) => sum + m.mastery_level, 0) / masteryData.length)
-      : 0;
-
     res.json({
       course_name: course.course_name,
       total_students: totalStudents,
       active_students: activeStudents,
       questions_this_week: questionsThisWeek,
-      total_questions: totalQuestions,
-      average_mastery: avgMastery
+      total_questions: totalQuestions
     });
   } catch (error) {
     console.error('Error fetching course overview:', error);
@@ -140,17 +129,6 @@ router.get('/course/:courseId/students', async (req, res) => {
         const questionCount = questions?.length || 0;
         const lastActive = questions?.[0]?.created_at || null;
 
-        // Get average mastery
-        const { data: masteryData } = await supabase
-          .from('student_mastery')
-          .select('mastery_level')
-          .eq('course_id', courseId)
-          .eq('student_id', studentId);
-
-        const avgMastery = masteryData?.length
-          ? Math.round(masteryData.reduce((sum, m) => sum + m.mastery_level, 0) / masteryData.length)
-          : 0;
-
         // Determine activity status
         let status = 'inactive';
         if (lastActive) {
@@ -166,7 +144,6 @@ router.get('/course/:courseId/students', async (req, res) => {
           name: profile?.full_name || 'Unknown',
           email: profile?.email || '',
           question_count: questionCount,
-          average_mastery: avgMastery,
           last_active: lastActive,
           status: status
         };
@@ -270,41 +247,36 @@ router.get('/student/:studentId/:courseId', async (req, res) => {
       .eq('id', studentId)
       .single();
 
-    // Get all mastery data
-    const { data: masteryData } = await supabase
-      .from('student_mastery')
-      .select('*')
-      .eq('course_id', courseId)
-      .eq('student_id', studentId)
-      .order('mastery_level', { ascending: false });
-
-    // Get recent activity timeline
-    const { data: recentActivity } = await supabase
+    // Get all activity
+    const { data: allActivity } = await supabase
       .from('analytics_events')
       .select('*')
       .eq('course_id', courseId)
       .eq('student_id', studentId)
       .eq('event_type', 'question')
-      .order('created_at', { ascending: false })
-      .limit(20);
+      .order('created_at', { ascending: false });
 
-    // Calculate overall stats
-    const avgMastery = masteryData?.length
-      ? Math.round(masteryData.reduce((sum, m) => sum + m.mastery_level, 0) / masteryData.length)
-      : 0;
+    const totalQuestions = allActivity?.length || 0;
 
-    const totalQuestions = recentActivity?.length || 0;
+    // Get unique topics asked about
+    const uniqueTopics = new Set(allActivity?.map(a => a.topic).filter(Boolean) || []);
 
-    // Format mastery map
-    const masteryMap = masteryData?.map(m => ({
-      concept: formatTopicName(m.concept),
-      mastery_level: m.mastery_level,
-      questions_asked: m.questions_asked,
-      last_practiced: m.last_practiced
-    })) || [];
+    // Count questions per topic
+    const topicCounts = {};
+    allActivity?.forEach(event => {
+      if (event.topic) {
+        topicCounts[event.topic] = (topicCounts[event.topic] || 0) + 1;
+      }
+    });
 
-    // Format activity timeline
-    const timeline = recentActivity?.map(event => ({
+    // Format topic breakdown
+    const topicBreakdown = Object.entries(topicCounts).map(([topic, count]) => ({
+      topic: formatTopicName(topic),
+      question_count: count
+    })).sort((a, b) => b.question_count - a.question_count);
+
+    // Format activity timeline (last 20)
+    const timeline = allActivity?.slice(0, 20).map(event => ({
       topic: formatTopicName(event.topic),
       message: event.message_content,
       created_at: event.created_at
@@ -317,11 +289,10 @@ router.get('/student/:studentId/:courseId', async (req, res) => {
         email: profile?.email || ''
       },
       stats: {
-        average_mastery: avgMastery,
         total_questions: totalQuestions,
-        concepts_explored: masteryData?.length || 0
+        topics_explored: uniqueTopics.size
       },
-      mastery_map: masteryMap,
+      topic_breakdown: topicBreakdown,
       activity_timeline: timeline
     });
   } catch (error) {

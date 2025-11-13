@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { analyticsAPI } from '../services/api';
 
 export default function AnalyticsDashboard() {
@@ -69,12 +69,6 @@ export default function AnalyticsDashboard() {
     }
   };
 
-  const getMasteryColor = (level) => {
-    if (level >= 80) return 'text-green-600';
-    if (level >= 50) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -125,7 +119,7 @@ export default function AnalyticsDashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Overview Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="text-sm text-gray-600 mb-1">Total Students</div>
             <div className="text-3xl font-bold text-gray-900">{overview?.total_students || 0}</div>
@@ -141,12 +135,6 @@ export default function AnalyticsDashboard() {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="text-sm text-gray-600 mb-1">Total Questions</div>
             <div className="text-3xl font-bold text-gray-900">{overview?.total_questions || 0}</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-sm text-gray-600 mb-1">Avg. Mastery</div>
-            <div className={`text-3xl font-bold ${getMasteryColor(overview?.average_mastery || 0)}`}>
-              {overview?.average_mastery || 0}%
-            </div>
           </div>
         </div>
 
@@ -205,9 +193,11 @@ export default function AnalyticsDashboard() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">{student.question_count} questions</span>
-                      <span className={`font-medium ${getMasteryColor(student.average_mastery)}`}>
-                        {student.average_mastery}% mastery
-                      </span>
+                      {student.last_active && (
+                        <span className="text-xs text-gray-500">
+                          {new Date(student.last_active).toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -245,13 +235,7 @@ export default function AnalyticsDashboard() {
                 ) : studentDetails ? (
                   <>
                     {/* Stats */}
-                    <div className="grid grid-cols-3 gap-4 mb-6">
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <div className="text-sm text-gray-600 mb-1">Avg. Mastery</div>
-                        <div className={`text-2xl font-bold ${getMasteryColor(studentDetails.stats.average_mastery)}`}>
-                          {studentDetails.stats.average_mastery}%
-                        </div>
-                      </div>
+                    <div className="grid grid-cols-2 gap-4 mb-6">
                       <div className="bg-gray-50 rounded-lg p-4">
                         <div className="text-sm text-gray-600 mb-1">Total Questions</div>
                         <div className="text-2xl font-bold text-gray-900">
@@ -259,30 +243,27 @@ export default function AnalyticsDashboard() {
                         </div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4">
-                        <div className="text-sm text-gray-600 mb-1">Concepts Explored</div>
+                        <div className="text-sm text-gray-600 mb-1">Topics Explored</div>
                         <div className="text-2xl font-bold text-gray-900">
-                          {studentDetails.stats.concepts_explored}
+                          {studentDetails.stats.topics_explored}
                         </div>
                       </div>
                     </div>
 
-                    {/* Mastery Map */}
+                    {/* Topic Breakdown */}
                     <div className="mb-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Concept Mastery</h3>
-                      {studentDetails.mastery_map.length === 0 ? (
-                        <p className="text-gray-600 text-sm">No mastery data yet.</p>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Topic Breakdown</h3>
+                      {studentDetails.topic_breakdown.length === 0 ? (
+                        <p className="text-gray-600 text-sm">No topic data yet.</p>
                       ) : (
                         <div className="grid grid-cols-2 gap-3">
-                          {studentDetails.mastery_map.map((concept) => (
-                            <div key={concept.concept} className="border border-gray-200 rounded-lg p-3">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-sm font-medium text-gray-700">{concept.concept}</span>
-                                <span className={`text-lg font-bold ${getMasteryColor(concept.mastery_level)}`}>
-                                  {concept.mastery_level}%
+                          {studentDetails.topic_breakdown.map((topic) => (
+                            <div key={topic.topic} className="border border-gray-200 rounded-lg p-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-medium text-gray-700">{topic.topic}</span>
+                                <span className="text-lg font-bold text-primary-600">
+                                  {topic.question_count}
                                 </span>
-                              </div>
-                              <div className="text-xs text-gray-600">
-                                {concept.questions_asked} questions
                               </div>
                             </div>
                           ))}
