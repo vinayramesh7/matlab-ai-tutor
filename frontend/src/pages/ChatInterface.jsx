@@ -131,18 +131,17 @@ export default function ChatInterface() {
         {parts.map((part, idx) => {
           if (part.type === 'code') {
             return (
-              <div key={idx} className="relative group">
+              <div key={idx} className="relative">
                 <button
                   onClick={() => handleInsertCode(part.code)}
                   onMouseEnter={() => setHoveredCode(part.code)}
                   onMouseLeave={() => setHoveredCode(null)}
-                  className="absolute top-2 right-2 z-10 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors opacity-0 group-hover:opacity-100 flex items-center space-x-1"
+                  className="absolute top-3 right-3 z-10 p-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 transition-colors"
                   title="Insert into editor"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
-                  <span>Insert to Editor</span>
                 </button>
                 <SyntaxHighlighter
                   language={part.language}
@@ -150,6 +149,7 @@ export default function ChatInterface() {
                   customStyle={{
                     borderRadius: '0.5rem',
                     padding: '1rem',
+                    paddingRight: '3rem',
                     fontSize: '0.875rem',
                     margin: '0.5rem 0',
                     backgroundColor: '#f6f8fa',
@@ -615,9 +615,9 @@ export default function ChatInterface() {
                   onChange={(value) => setEditorCode(value || '')}
                 />
                 {hoveredCode && (
-                  <div className="absolute inset-0 bg-blue-50 bg-opacity-30 pointer-events-none flex items-center justify-center">
-                    <div className="text-blue-600 text-sm font-medium bg-white px-4 py-2 rounded shadow-lg">
-                      Click "Insert to Editor" to add this code
+                  <div className="absolute inset-0 bg-white bg-opacity-90 pointer-events-none">
+                    <div className="p-4 font-mono text-sm text-gray-400 whitespace-pre-wrap">
+                      {hoveredCode}
                     </div>
                   </div>
                 )}
