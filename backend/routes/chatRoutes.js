@@ -50,11 +50,12 @@ router.post('/message', async (req, res) => {
     const pdfChunks = await getCoursePDFChunks(supabase, course_id);
     console.log(`📚 Found ${pdfChunks.length} total PDF chunks for course`);
 
-    // Search for relevant PDF chunks based on the student's message
-    const relevantChunks = searchRelevantChunks(message, pdfChunks, 5);
+    // Search for relevant PDF chunks based on the student's message (using enhanced semantic search)
+    const relevantChunks = searchRelevantChunks(message, pdfChunks, 8);
     console.log(`🔍 Found ${relevantChunks.length} relevant chunks for query: "${message}"`);
     relevantChunks.forEach((chunk, i) => {
-      console.log(`  ${i + 1}. "${chunk.filename}" - Page ${chunk.page} (score: ${chunk.score})`);
+      console.log(`  ${i + 1}. "${chunk.filename}" - Page ${chunk.page} (score: ${chunk.score?.toFixed(1)})`);
+      console.log(`      Preview: ${chunk.content.substring(0, 80)}...`);
     });
 
     // Prepare conversation history for Claude API

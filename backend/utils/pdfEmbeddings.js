@@ -94,55 +94,208 @@ export async function extractAndChunkPDF(pdfBuffer, filename) {
 }
 
 /**
- * Simple keyword-based search for relevant PDF chunks
- * This is a basic implementation - in production, you'd use vector embeddings
+ * Enhanced semantic search for relevant PDF chunks
+ * Uses improved scoring with TF-IDF-like approach and semantic context
  * @param {string} query - User's question
  * @param {Array} allChunks - All PDF chunks for a course
  * @param {number} topK - Number of chunks to return
- * @returns {Array} - Most relevant chunks
+ * @returns {Array} - Most relevant chunks with better accuracy
  */
-export function searchRelevantChunks(query, allChunks, topK = 5) {
+export function searchRelevantChunks(query, allChunks, topK = 8) {
   if (!allChunks || allChunks.length === 0) {
     return [];
   }
 
-  // Extract keywords from query (simple tokenization)
+  // Extract keywords from query
   const queryKeywords = extractKeywords(query.toLowerCase());
-
-  // Add concept-related keywords for better matching
   const expandedKeywords = expandQueryKeywords(queryKeywords);
 
-  // Score each chunk based on keyword matches
+  // Calculate IDF (Inverse Document Frequency) for better scoring
+  const idf = calculateIDF(queryKeywords, allChunks);
+
+  // Score each chunk with enhanced semantic matching
   const scoredChunks = allChunks.map(chunk => {
     const chunkText = chunk.content.toLowerCase();
     let score = 0;
 
-    // Score for primary keywords
+    // 1. TF-IDF scoring for primary keywords
     queryKeywords.forEach(keyword => {
       const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
       const matches = chunkText.match(regex);
       if (matches) {
-        score += matches.length * keyword.length * 3; // Higher weight for exact keywords
+        const tf = matches.length;
+        const idfScore = idf[keyword] || 1;
+        score += tf * idfScore * keyword.length * 5; // Higher weight for exact keywords
       }
     });
 
-    // Score for expanded/related keywords
+    // 2. Score for expanded/related keywords
     expandedKeywords.forEach(keyword => {
       const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
       const matches = chunkText.match(regex);
       if (matches) {
-        score += matches.length * keyword.length; // Lower weight for related keywords
+        score += matches.length * keyword.length * 2;
       }
     });
+
+    // 3. Detect and boost semantic markers (headings, sections, definitions)
+    const semanticBoost = detectSemanticMarkers(chunkText, queryKeywords);
+    score += semanticBoost;
+
+    // 4. Proximity bonus - if multiple keywords appear close together
+    const proximityBonus = calculateProximityBonus(chunkText, queryKeywords);
+    score += proximityBonus;
+
+    // 5. Context quality - boost chunks that start with headings or definitions
+    if (isContextRich(chunkText)) {
+      score *= 1.3;
+    }
 
     return { ...chunk, score };
   });
 
-  // Sort by score and return top K
-  return scoredChunks
+  // Sort by score and return top K, ensuring diversity
+  const topChunks = scoredChunks
     .sort((a, b) => b.score - a.score)
-    .filter(chunk => chunk.score > 0)
-    .slice(0, topK);
+    .filter(chunk => chunk.score > 0);
+
+  // Ensure page diversity - don't return too many chunks from same page
+  const diverseChunks = ensurePageDiversity(topChunks, topK);
+
+  return diverseChunks.slice(0, topK);
+}
+
+/**
+ * Calculate Inverse Document Frequency for keywords
+ */
+function calculateIDF(keywords, chunks) {
+  const idf = {};
+  const totalChunks = chunks.length;
+
+  keywords.forEach(keyword => {
+    const chunksWithKeyword = chunks.filter(chunk => {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+      return regex.test(chunk.content);
+    }).length;
+
+    // IDF = log(total documents / documents containing term)
+    idf[keyword] = chunksWithKeyword > 0
+      ? Math.log(totalChunks / chunksWithKeyword) + 1
+      : 1;
+  });
+
+  return idf;
+}
+
+/**
+ * Detect semantic markers like headings, definitions, examples
+ */
+function detectSemanticMarkers(text, keywords) {
+  let boost = 0;
+
+  // Check for numbered sections (e.g., "1.2.3", "Section 5")
+  if (/\b\d+(\.\d+)*\s+[A-Z]/.test(text) || /\bSection\s+\d+/i.test(text) || /\bChapter\s+\d+/i.test(text)) {
+    boost += 50;
+  }
+
+  // Check for definition patterns
+  keywords.forEach(keyword => {
+    const defPatterns = [
+      new RegExp(`${keyword}\\s+(is|are|means|refers to|defined as)`, 'i'),
+      new RegExp(`(definition|what is|define)\\s+${keyword}`, 'i'),
+    ];
+
+    defPatterns.forEach(pattern => {
+      if (pattern.test(text)) {
+        boost += 40;
+      }
+    });
+  });
+
+  // Check for example patterns
+  if (/\b(example|for instance|such as|e\.g\.|consider)\b/i.test(text)) {
+    boost += 20;
+  }
+
+  // Check for figure/table captions
+  if (/\b(Figure|Table|Diagram)\s+\d+/i.test(text)) {
+    boost += 30;
+  }
+
+  return boost;
+}
+
+/**
+ * Calculate proximity bonus when keywords appear close together
+ */
+function calculateProximityBonus(text, keywords) {
+  if (keywords.length < 2) return 0;
+
+  let bonus = 0;
+  const words = text.toLowerCase().split(/\s+/);
+
+  // Find positions of all keywords
+  const positions = {};
+  keywords.forEach(keyword => {
+    positions[keyword] = [];
+    words.forEach((word, idx) => {
+      if (word.includes(keyword)) {
+        positions[keyword].push(idx);
+      }
+    });
+  });
+
+  // Calculate proximity between keyword pairs
+  keywords.forEach((kw1, i) => {
+    keywords.slice(i + 1).forEach(kw2 => {
+      positions[kw1]?.forEach(pos1 => {
+        positions[kw2]?.forEach(pos2 => {
+          const distance = Math.abs(pos1 - pos2);
+          if (distance < 20) { // Within 20 words
+            bonus += (20 - distance) * 2;
+          }
+        });
+      });
+    });
+  });
+
+  return bonus;
+}
+
+/**
+ * Check if chunk contains high-quality context (starts with heading, definition, etc.)
+ */
+function isContextRich(text) {
+  const richPatterns = [
+    /^\d+(\.\d+)*\s+[A-Z]/,  // Starts with numbered section
+    /^(Chapter|Section|Introduction|Definition|Overview)/i,
+    /\b(define|definition|means|refers to|is defined as)\b/i,
+  ];
+
+  return richPatterns.some(pattern => pattern.test(text));
+}
+
+/**
+ * Ensure diversity in results - don't return too many chunks from same page
+ */
+function ensurePageDiversity(chunks, topK) {
+  const result = [];
+  const pageCount = {};
+
+  for (const chunk of chunks) {
+    const page = chunk.page;
+    pageCount[page] = (pageCount[page] || 0);
+
+    // Allow max 2 chunks per page in top results
+    if (pageCount[page] < 2 || result.length < topK / 2) {
+      result.push(chunk);
+      pageCount[page]++;
+    }
+
+    if (result.length >= topK * 1.5) break; // Get some extra for filtering
+  }
+
+  return result;
 }
 
 /**
