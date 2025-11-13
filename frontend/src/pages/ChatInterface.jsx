@@ -211,6 +211,47 @@ export default function ChatInterface() {
     // handleSendMessage({ preventDefault: () => {} });
   };
 
+  const handleSubmitCode = async () => {
+    if (!editorCode.trim() || loading) return;
+
+    const codeSubmission = `[STUDENT CODE SUBMISSION]\n\`\`\`matlab\n${editorCode.trim()}\n\`\`\`\n\nI've written the code above in the MATLAB editor. Can you review it and provide feedback?`;
+
+    setLoading(true);
+    setError('');
+
+    const tempUserMsg = {
+      role: 'user',
+      content: codeSubmission,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, tempUserMsg]);
+
+    try {
+      const conversationHistory = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      const response = await chatAPI.sendMessage(courseId, codeSubmission, conversationHistory);
+
+      const assistantMsg = {
+        role: 'assistant',
+        content: response.response,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+
+      if (response.relevant_materials && response.relevant_materials.length > 0) {
+        console.log('Referenced materials:', response.relevant_materials);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to submit code');
+      setMessages(prev => prev.slice(0, -1));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleClearHistory = async () => {
     if (!confirm('Are you sure you want to clear the conversation history?')) {
       return;
@@ -416,9 +457,32 @@ export default function ChatInterface() {
           {/* Editor/PDF Panel */}
           <Panel defaultSize={50} minSize={20} collapsible={true} onCollapse={setRightCollapsed}>
             <div className="h-full flex flex-col bg-white border-l border-gray-200">
-              <div className="flex-shrink-0 px-4 py-2 border-b border-gray-200 bg-gray-50">
-                <h3 className="text-sm font-semibold text-gray-700">MATLAB Editor</h3>
-                <p className="text-xs text-gray-500">Write and test your code here</p>
+              <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700">MATLAB Editor</h3>
+                  <p className="text-xs text-gray-500">Write and test your code here</p>
+                </div>
+                <button
+                  onClick={handleSubmitCode}
+                  disabled={loading || !editorCode.trim()}
+                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  title="Submit your code for AI review"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>Submit Code</span>
+                </button>
               </div>
               <div className="flex-1 overflow-hidden">
                 <MatlabEditor
