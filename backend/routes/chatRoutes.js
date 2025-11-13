@@ -207,10 +207,14 @@ router.post('/execute', async (req, res) => {
 
     console.log('✅ Code executed via Judge0');
 
-    // Extract output
-    const stdout = result.stdout ? Buffer.from(result.stdout, 'base64').toString('utf-8') : '';
-    const stderr = result.stderr ? Buffer.from(result.stderr, 'base64').toString('utf-8') : '';
+    // Extract output and decode from base64
+    let stdout = result.stdout ? Buffer.from(result.stdout, 'base64').toString('utf-8') : '';
+    let stderr = result.stderr ? Buffer.from(result.stderr, 'base64').toString('utf-8') : '';
     const compileOutput = result.compile_output ? Buffer.from(result.compile_output, 'base64').toString('utf-8') : '';
+
+    // Clean up ANSI color codes and control characters
+    stdout = stdout.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
+    stderr = stderr.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
 
     // Check for errors
     if (result.status.id >= 6) { // Status 6+ are errors

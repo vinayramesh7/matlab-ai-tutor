@@ -646,12 +646,17 @@ export default function ChatInterface() {
                   />
                 </div>
                 {executionOutput && (
-                  <div className="flex-shrink-0 border-t border-gray-200 bg-gray-900 text-gray-100 p-4 overflow-auto max-h-48">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-xs font-semibold text-gray-400 uppercase">Output</h4>
+                  <div className="flex-shrink-0 border-t-2 border-blue-200 bg-white p-4 overflow-auto max-h-64">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <h4 className="text-sm font-semibold text-gray-700">Command Window</h4>
+                      </div>
                       <button
                         onClick={() => setExecutionOutput(null)}
-                        className="text-gray-400 hover:text-gray-200 transition-colors"
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
                         title="Clear output"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -660,23 +665,23 @@ export default function ChatInterface() {
                       </button>
                     </div>
                     {executionOutput.error ? (
-                      <pre className="text-red-400 text-sm font-mono whitespace-pre-wrap">
+                      <pre className="text-red-600 text-sm font-mono whitespace-pre-wrap bg-red-50 p-3 rounded border border-red-200">
                         {executionOutput.message || 'An error occurred'}
                       </pre>
                     ) : (
                       <div>
                         {executionOutput.stdout && (
-                          <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap mb-2">
+                          <pre className="text-gray-900 text-sm font-mono whitespace-pre-wrap leading-relaxed">
                             {executionOutput.stdout}
                           </pre>
                         )}
                         {executionOutput.stderr && (
-                          <pre className="text-yellow-400 text-sm font-mono whitespace-pre-wrap">
+                          <pre className="text-orange-600 text-sm font-mono whitespace-pre-wrap mt-2 bg-orange-50 p-2 rounded border border-orange-200">
                             {executionOutput.stderr}
                           </pre>
                         )}
                         {!executionOutput.stdout && !executionOutput.stderr && (
-                          <pre className="text-gray-400 text-sm font-mono">
+                          <pre className="text-gray-500 text-sm font-mono italic">
                             (No output)
                           </pre>
                         )}
